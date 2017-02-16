@@ -44,8 +44,8 @@ render_erl(TargetFile, ExportList, BodyIoList) ->
     write_file(TargetFile, IoList).
 
 render_dtl(TplFile, TargetFile, RenderData, RenderOptions) ->
-    Module = filename:rootname(filename:basename(TplFile)),
-    case erlydtl:compile_file(TplFile, Module, [binary]) of
+    ModuleName = filename:rootname(filename:basename(TplFile))++"_dtl",
+    case erlydtl:compile_file(TplFile, ModuleName, [binary]) of
         {ok, Module, _} ->
             {ok, IoList} = Module:render(RenderData, RenderOptions),
             write_file(TargetFile, IoList);
