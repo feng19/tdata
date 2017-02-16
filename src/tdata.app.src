@@ -1,12 +1,10 @@
-{application, tdata, [
-    {description, "An OTP library"},
-    {vsn, "0.1.0"},
-    {registered, []},
-    {applications, [kernel, stdlib]},
-    {env, []},
-    {modules, []},
-
-    {maintainers, ["feng19"]},
-    {licenses, ["MIT"]},
-    {links, [{"Github", "https://github.com/feng19/tdata"}]}
-]}.
+{application,tdata,
+             [{description,"An OTP library"},
+              {vsn,"0.1.1"},
+              {registered,[]},
+              {applications,[kernel,stdlib]},
+              {env,[]},
+              {modules,[]},
+              {maintainers,["feng19"]},
+              {licenses,["MIT"]},
+              {links,[{"Github","https://github.com/feng19/tdata"}]}]}.
