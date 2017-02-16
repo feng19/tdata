@@ -12,7 +12,7 @@
 %% API functions
 %%====================================================================
 start() ->
-    PythonPath = filename:join(code:priv_dir(rebar3_edata_plugin), "python/"),
+    PythonPath = filename:join(code:priv_dir(?MODULE), "python/"),
     ErlPortPath = filename:join(code:priv_dir(erlport), "python2/"),
     python:start([{cd, ErlPortPath}, {python_path, PythonPath}]).
 

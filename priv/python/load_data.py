@@ -35,15 +35,15 @@ def load_excel(excel_name):
 
 def get_header_len(cells):
     header_len = 0
-    for i in cells:
-        if len(i)==0:
+    for cell in cells:
+        if len(cell)==0:
             break
         header_len = header_len +1
     return header_len
 
 def is_all_empty(cells):
-    for i in cells:
-        if i<>'':
+    for cell in cells:
+        if cell<>'':
             return False
     return True
 

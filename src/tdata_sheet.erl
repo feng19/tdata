@@ -64,6 +64,12 @@ skip_comments(Data, TargetConfig0) ->
             Comments = lists:map(fun get_cell_value/1, Comments0),
             NewData = Data#{comments => Comments, rows => Rows},
             zip_header(NewData, TargetConfig);
+        {value, {skip_comments, N}, TargetConfig} when is_integer(N) ->
+            #{rows := Rows0} = Data,
+            {CommentsRows, Rows} = lists:split(N, Rows0),
+            Comments = [lists:map(fun get_cell_value/1, Comments0) || Comments0 <- CommentsRows],
+            NewData = Data#{comments => Comments, rows => Rows},
+            zip_header(NewData, TargetConfig);
         _ ->
             zip_header(Data, TargetConfig0)
     end.
@@ -71,15 +77,11 @@ skip_comments(Data, TargetConfig0) ->
 zip_header(Data, TargetConfig0) ->
     {NewData, NewTargetConfig} =
         case lists:keytake(data_structure, 1, TargetConfig0) of
-            {value, {_, proplists}, TargetConfig} ->
-                {zip_header_proplists(Data), TargetConfig};
-            {value, {_, list}, TargetConfig} ->
-                {zip_header_list(Data), TargetConfig};
             {value, {_, map}, TargetConfig} ->
                 {zip_header_map(Data), TargetConfig};
-            {value, {_, RecordName}, TargetConfig} ->
-                Module = proplists:get_value(module, TargetConfig),
-                {zip_header_record(Module, RecordName, Data), TargetConfig};
+%%            {value, {_, RecordName}, TargetConfig} ->
+%%                Module = proplists:get_value(module, TargetConfig),
+%%                {zip_header_record(Module, RecordName, Data), TargetConfig};
             false -> %% default atom map
                 {zip_header_map(Data), TargetConfig0}
         end,
@@ -89,34 +91,25 @@ zip_header(Data, TargetConfig0) ->
         Err -> Err
     end.
 
-zip_header_list(#{rows := [Header0 | Rows]} = Data) ->
-    Header = get_header(Header0),
-    Data#{data_structure => list, header => Header, rows => Rows}.
-
 zip_header_map(#{rows := [Header0 | Rows0]} = Data) ->
     Header = get_header(Header0),
     Rows = [maps:from_list(lists:zip(Header, Row)) || Row <- Rows0],
     Data#{data_structure => map, header => Header, rows => Rows}.
 
-zip_header_proplists(#{rows := [Header0 | Rows0]} = Data) ->
-    Header = get_header(Header0),
-    Rows = [lists:zip(Header, Row) || Row <- Rows0],
-    Data#{data_structure => proplists, header => Header, rows => Rows}.
-
-zip_header_record(Module, RecordName, #{rows := [Header0 | Rows0]} = Data) ->
-    Header = get_header(Header0),
-    case erlang:function_exported(Module, '#new-', 1) of
-        true ->
-            Record = Module:'#new-'(RecordName),
-            Rows = [zip_header_record_do(Module, Record, Header, Row) || Row <- Rows0],
-            Data#{data_structure => record, header => Header, rows => Rows};
-        false ->
-            {not_exprecs_module, Module}
-    end.
-
-zip_header_record_do(Module, Record, Header, Row) ->
-    Proplists = lists:zip(Header, Row),
-    Module:'#fromlist-'(Proplists, Record).
+%%zip_header_record(Module, RecordName, #{rows := [Header0 | Rows0]} = Data) ->
+%%    Header = get_header(Header0),
+%%    case erlang:function_exported(Module, '#new-', 1) of
+%%        true ->
+%%            Record = Module:'#new-'(RecordName),
+%%            Rows = [zip_header_record_do(Module, Record, Header, Row) || Row <- Rows0],
+%%            Data#{data_structure => record, header => Header, rows => Rows};
+%%        false ->
+%%            {not_exprecs_module, Module}
+%%    end.
+%%
+%%zip_header_record_do(Module, Record, Header, Row) ->
+%%    Proplists = lists:zip(Header, Row),
+%%    Module:'#fromlist-'(Proplists, Record).
 
 check_data_and_groups(Data, TargetConfig0) ->
     Checks = proplists:get_value(checks, TargetConfig0, []),
@@ -161,7 +154,8 @@ check_cols_map([Field | Header], Checks, Rows) ->
             check_cols_map(Header, Checks, NewRows);
         Err -> Err
     end;
-check_cols_map([], _Checks, NewRows) -> {ok, NewRows}.
+check_cols_map([], _Checks, NewRows) ->
+    {ok, NewRows}.
 
 check_rows_map(Field, [Row | Rows], Checks, Acc) ->
     CheckList = get_field_checks(Field, Checks),
@@ -172,7 +166,8 @@ check_rows_map(Field, [Row | Rows], Checks, Acc) ->
             check_rows_map(Field, Rows, Checks, [NewRow | Acc]);
         Err -> Err
     end;
-check_rows_map(_Field, [], _Checks, Acc) -> {ok, lists:reverse(Acc)}.
+check_rows_map(_Field, [], _Checks, Acc) ->
+    {ok, lists:reverse(Acc)}.
 
 groups(DataStructure, Groups, #{rows := Rows} = Data, Checks) ->
     Fun = get_group_fun_by_data_structure(DataStructure),
@@ -297,5 +292,25 @@ check_fun_cell([Check | CheckList], Type, Cell) when is_function(Check, 2) ->
         {ok, NewCell} ->
             check_fun_cell(CheckList, Type, NewCell);
         Err -> Err
+    end;
+check_fun_cell([Check|CheckList], Type, Cell) when is_atom(Check) ->
+    case erlang:function_exported(tdata_util, Check, 1) of
+        true ->
+            case tdata_util:Check(Cell) of
+                {ok, NewCell} ->
+                    check_fun_cell(CheckList, Type, NewCell);
+                Err -> Err
+            end;
+        false ->
+            case erlang:function_exported(tdata_util, Check, 2) of
+                true ->
+                    case tdata_util:Check(Type, Cell) of
+                        {ok, NewCell} ->
+                            check_fun_cell(CheckList, Type, NewCell);
+                        Err -> Err
+                    end;
+                false ->
+                    {undefined_check_fun, Check}
+            end
     end;
 check_fun_cell([], _Type, Cell) -> {ok, Cell}.
