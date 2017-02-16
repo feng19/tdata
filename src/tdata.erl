@@ -68,7 +68,7 @@ load_excel_files([{ExcelFile0, LoadSheetsConfig} | ExcelFiles], InputDir, Python
         {ok, SheetsData} ->
             load_excel_files(ExcelFiles, InputDir, PythonPid, [{ExcelFile0, SheetsData} | Data]);
         Err ->
-            error(load_sheets_error, {ExcelFile0, Err})
+            error({load_sheets_error, {ExcelFile0, Err}})
     end;
 load_excel_files([], _InputDir, _PythonPid, Data) ->
     Data.
