@@ -24,7 +24,9 @@ transform_files(PythonPid, HandleModule, Config, TransformConfig) when is_atom(H
     transform_files(PythonPid, TransformDefines, Config, TransformConfig);
 transform_files(PythonPid, TransformDefines, Config, TransformConfig) when is_list(TransformDefines) ->
     [transform_file(TransformDefine, PythonPid, Config, TransformConfig)
-        || TransformDefine <- TransformDefines].
+        || TransformDefine <- TransformDefines];
+transform_files(PythonPid, TransformDefine, Config, TransformConfig) when is_tuple(TransformDefine) ->
+    transform_file(TransformDefine, PythonPid, Config, TransformConfig).
 
 transform_file(TransformDefine, PythonPid,
     #{input_dir := InputDir, output_dir := OutputDir} = Config, TransformConfig) ->
@@ -36,7 +38,16 @@ transform_file(TransformDefine, PythonPid,
             TemplateDirTemp = maps:get(template_dir, Config),
             {InputFilesTemp, OutputFileTemp, TplFileTemp, TransformFunTemp, TemplateDirTemp}
     end,
-    InputFiles = [filename:join(InputDir, InputFile) || {InputFile, _} <- InputFiles0],
+    InputFiles =
+    if
+        is_list(InputFiles0) ->
+            [filename:join(InputDir, InputFile) || {InputFile, _} <- InputFiles0];
+        is_tuple(InputFiles0) andalso tuple_size(InputFiles0)==2 ->
+            {InputFile, LoadSheetsConfig} = InputFiles0,
+            [{filename:join(InputDir, InputFile), LoadSheetsConfig}];
+        true ->
+            error({error_input_files, InputFiles0})
+    end,
     OutputFile = filename:join(OutputDir, OutputFile0),
     case is_need_transform(InputFiles, OutputFile, undefined) of
         true ->

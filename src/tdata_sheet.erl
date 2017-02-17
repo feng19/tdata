@@ -293,7 +293,7 @@ check_fun_cell([Check | CheckList], Type, Cell) when is_function(Check, 2) ->
             check_fun_cell(CheckList, Type, NewCell);
         Err -> Err
     end;
-check_fun_cell([Check|CheckList], Type, Cell) when is_atom(Check) ->
+check_fun_cell([Check | CheckList], Type, Cell) when is_atom(Check) ->
     code:ensure_loaded(tdata_util),
     case erlang:function_exported(tdata_util, Check, 1) of
         true ->
