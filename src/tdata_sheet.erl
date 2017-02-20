@@ -6,7 +6,7 @@
 ]).
 
 load_sheets(PythonPid, ExcelFile, TargetConfig) ->
-    Data = python:call(PythonPid, load_data, load_excel, [list_to_binary(ExcelFile)]),
+    Data = python:call(PythonPid, load_data, load_excel, [unicode:characters_to_binary(ExcelFile)]),
     Sheets = maps:from_list([Sheet || Sheet <- Data, not_empty_rows_sheet(Sheet)]),
     loop_all_sheet_name(Sheets, [{excel, ExcelFile} | TargetConfig]).
 
