@@ -12,12 +12,14 @@ render(Config) ->
     DataDir = ?config(data_dir, Config),
     OutputDir = filename:join(DataDir, "output"),
     filelib:ensure_dir(filename:join(OutputDir, "temp")),
-    lists:foreach(
+    Res = lists:map(
         fun(TransformDefine) ->
-            OutputFile = filename:join(OutputDir, element(2, TransformDefine)),
-            filelib:is_file(OutputFile) andalso file:delete(OutputFile)
+            OutputFile0 = element(2, TransformDefine),
+            OutputFile = filename:join(OutputDir, OutputFile0),
+            filelib:is_file(OutputFile) andalso file:delete(OutputFile),
+            {OutputFile0, ok}
         end, transform_module:transform_defines()),
-    tdata:transform_files(PythonPid, transform_module,
+    Res = tdata:transform_files(PythonPid, transform_module,
         #{input_dir => DataDir, output_dir => OutputDir, template_dir => DataDir}, []),
     tdata:stop(PythonPid),
     ok.

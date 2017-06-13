@@ -22,16 +22,14 @@ render({ok, ExportList, BodyIoList}, _TplFile, _TplDir, OutputFile) ->
     render_erl(OutputFile, ExportList, BodyIoList);
 render({ok, IoList}, _TplFile, _TplDir, OutputFile) ->
     write_file(OutputFile, IoList);
-render(Err, _TplFile, _TplDir, _OutputFile) ->
-    error(Err).
+render(Err, _TplFile, _TplDir, _OutputFile) -> Err.
 
 render_mustache(TplFile, TargetFile, RenderData, RenderOptions) ->
     case file:read_file(TplFile) of
         {ok, RenderBin} ->
             IoList = bbmustache:render(RenderBin, RenderData, RenderOptions),
             write_file(TargetFile, IoList);
-        Err ->
-            error(Err)
+        Err -> Err
     end.
 
 render_erl(TargetFile, ExportList, BodyIoList) ->
@@ -46,19 +44,20 @@ render_erl(TargetFile, ExportList, BodyIoList) ->
 render_dtl(TplFile, TargetFile, RenderData, RenderOptions) ->
     ModuleName = filename:rootname(filename:basename(TplFile))++"_dtl",
     case erlydtl:compile_file(TplFile, ModuleName, [binary]) of
+        {ok, Module} ->
+            {ok, IoList} = Module:render(RenderData, RenderOptions),
+            write_file(TargetFile, IoList);
         {ok, Module, _} ->
             {ok, IoList} = Module:render(RenderData, RenderOptions),
             write_file(TargetFile, IoList);
-        Err ->
-            error(Err)
+        Err -> Err
     end.
 
 write_file(TargetFile, IoList) ->
     Binary = iolist_to_binary(IoList),
     case file:write_file(TargetFile, Binary) of
         ok -> ok;
-        Err ->
-            error(Err)
+        Err -> Err
     end.
 
 gen_module_header(Module) ->

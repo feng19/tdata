@@ -1,10 +1,11 @@
-{application,tdata,
-             [{description,"An OTP library"},
-              {vsn,"0.1.4"},
-              {registered,[]},
-              {applications,[kernel,stdlib]},
-              {env,[]},
-              {modules,[]},
-              {maintainers,["feng19"]},
-              {licenses,["MIT"]},
-              {links,[{"Github","https://github.com/feng19/tdata"}]}]}.
+{application, tdata, [
+    {description, "transform excel files to erl files"},
+    {vsn, "0.1.4"},
+    {registered, []},
+    {applications, [kernel, stdlib]},
+    {env, []},
+    {modules, []},
+    {maintainers, ["feng19"]},
+    {licenses, ["MIT"]},
+    {links, [{"Github", "https://github.com/feng19/tdata"}]}
+]}.
