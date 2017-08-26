@@ -49,6 +49,7 @@ transform_file(TransformDefine, PythonPid,
                 error({error_input_files, InputFiles0})
         end,
     OutputFile = filename:join(OutputDir, OutputFile0),
+    ok = filelib:ensure_dir(OutputFile),
     case is_need_transform(InputFiles, OutputFile, undefined) of
         true ->
             ExcelData = load_excel_files(InputFiles0, InputDir, PythonPid, []),
