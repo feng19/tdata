@@ -5,119 +5,113 @@
     load_sheets/3
 ]).
 
-load_sheets(PythonPid, ExcelFile, TargetConfig) ->
+-export_type([load_sheets_opts/0]).
+
+-type field_name() :: atom().
+-type field_check_opt() ::
+    check_integer |
+    check_float |
+    check_not_empty |
+    cell_trans_punctuation |
+function().
+-type check_field() :: {field_name(), [field_check_opt()]}.
+-type sheet_name() :: binary() | all.
+-type load_sheet_opts() :: #{
+    skip_comments := boolean() | pos_integer(), %% default false
+    groups := [field_name()],
+    checks := [check_field()]
+}.
+-type load_sheets_opts() :: #{sheet_name() => load_sheet_opts()}.
+
+%%====================================================================
+%% API functions
+%%====================================================================
+
+-spec load_sheets(PythonPid :: pid(), ExcelFile :: file:filename(), load_sheets_opts()) ->
+    {ok, Data :: map()} | tuple().
+load_sheets(PythonPid, ExcelFile, LoadSheetsOpts) when is_map(LoadSheetsOpts) ->
     Data = python:call(PythonPid, load_data, load_excel, [unicode:characters_to_binary(ExcelFile)]),
-    Sheets = maps:from_list([Sheet || Sheet <- Data, not_empty_rows_sheet(Sheet)]),
-    loop_all_sheet_name(Sheets, [{excel, ExcelFile} | TargetConfig]).
+    case [Sheet || Sheet <- Data, filter_empty_rows_sheet(Sheet)] of
+        [] ->
+            {empty_sheets, ExcelFile};
+        Sheets ->
+            loop_all_sheet_name(LoadSheetsOpts, maps:from_list(Sheets))
+    end;
+load_sheets(_PythonPid, ExcelFile, LoadSheetsOpts) ->
+    {load_sheets_opts_not_map, ExcelFile, LoadSheetsOpts}.
 
-not_empty_rows_sheet({undefined, _Rows}) -> false;
-not_empty_rows_sheet({[], _Rows}) -> false;
-not_empty_rows_sheet({_SheetName, undefined}) -> false;
-not_empty_rows_sheet({_SheetName, []}) -> false;
-not_empty_rows_sheet({_SheetName, _Rows}) -> true.
+%%====================================================================
+%% Internal functions
+%%====================================================================
 
-loop_all_sheet_name(Sheets, TargetConfig0) ->
-    case lists:keytake(sheet_name, 1, TargetConfig0) of
-        false ->
-            {miss_sheet_name, TargetConfig0};
-        {value, {sheet_name, all, SheetConfig}, TargetConfig1} ->
-            TargetConfig = tdata_util:key_delete_all(sheet_name, 1, TargetConfig1),
-            AllSheetNameConfig = [{sheet_name, SheetName, SheetConfig} || SheetName <- maps:keys(Sheets)],
-            loop_all_sheet_name(Sheets, AllSheetNameConfig ++ TargetConfig);
-        {value, {sheet_name, SheetName, SheetConfig}, TargetConfig} ->
-            case sheet_name(SheetName, Sheets, SheetConfig) of
-                {ok, SheetData} ->
-                    loop_all_sheet_name_do(Sheets, TargetConfig, #{SheetName => SheetData});
-                Err -> Err
-            end
-    end.
+filter_empty_rows_sheet({undefined, _Rows}) -> false;
+filter_empty_rows_sheet({[], _Rows}) -> false;
+filter_empty_rows_sheet({_SheetName, undefined}) -> false;
+filter_empty_rows_sheet({_SheetName, []}) -> false;
+filter_empty_rows_sheet({_SheetName, _Rows}) -> true.
 
-loop_all_sheet_name_do(Sheets, TargetConfig0, Data) ->
-    case lists:keytake(sheet_name, 1, TargetConfig0) of
-        false ->
-            {ok, Data};
-        {value, {sheet_name, SheetName, SheetConfig}, TargetConfig} ->
-            case sheet_name(SheetName, Sheets, SheetConfig) of
-                {ok, SheetData} ->
-                    loop_all_sheet_name_do(Sheets, TargetConfig, Data#{SheetName => SheetData});
-                Err -> Err
-            end
-    end.
+loop_all_sheet_name(#{all := LoadSheetOpts} = LoadSheetsOpts, Sheets) ->
+    AllLoadSheetsOpts = maps:from_list([{SheetName, LoadSheetOpts} || SheetName <- maps:keys(Sheets)]),
+    NewLoadSheetsOpts = maps:merge(AllLoadSheetsOpts, maps:remove(all, LoadSheetsOpts)),
+    loop_all_sheet_name(NewLoadSheetsOpts, Sheets);
+loop_all_sheet_name(LoadSheetsOpts, Sheets) when is_map(LoadSheetsOpts) ->
+    loop_all_sheet_name_do(maps:to_list(LoadSheetsOpts), Sheets, #{}).
 
-sheet_name(SheetName, Sheets, TargetConfig) ->
+loop_all_sheet_name_do([{SheetName, LoadSheetOpts} | LoadSheetsOpts], Sheets, Data)
+    when is_binary(SheetName) andalso is_map(LoadSheetOpts) ->
+    case sheet_name(SheetName, Sheets, LoadSheetOpts) of
+        {ok, SheetData} ->
+            loop_all_sheet_name_do(LoadSheetsOpts, Sheets, Data#{SheetName => SheetData});
+        Err -> Err
+    end;
+loop_all_sheet_name_do([{SheetName, _LoadSheetOpts} | _], _Sheets, _Data) when not is_binary(SheetName) ->
+    {error_sheet_name, SheetName};
+loop_all_sheet_name_do([{SheetName, LoadSheetOpts} | _], _Sheets, _Data) when not is_map(LoadSheetOpts) ->
+    {error_load_sheet_opts, SheetName, LoadSheetOpts};
+loop_all_sheet_name_do([], _Sheets, Data) -> {ok, Data}.
+
+sheet_name(SheetName, Sheets, LoadSheetOpts) ->
     case maps:find(SheetName, Sheets) of
         {ok, Rows} ->
             Data = #{sheet_name => SheetName, rows => Rows},
-            case skip_comments(Data, TargetConfig) of
+            case skip_comments(LoadSheetOpts, Data) of
                 {ok, _} = Res -> Res;
                 Err ->
                     {do_sheet_config_err, SheetName, Err}
             end;
         error ->
-            {sheet_name_undefined, SheetName}
+            {unfound_sheet, SheetName}
     end.
 
-skip_comments(Data, TargetConfig0) ->
-    case lists:keytake(skip_comments, 1, TargetConfig0) of
-        {value, {skip_comments, true}, TargetConfig} ->
-            #{rows := [Comments0 | Rows]} = Data,
-            Comments = lists:map(fun get_cell_value/1, Comments0),
-            NewData = Data#{comments => Comments, rows => Rows},
-            zip_header(NewData, TargetConfig);
-        {value, {skip_comments, N}, TargetConfig} when is_integer(N) ->
-            #{rows := Rows0} = Data,
-            {CommentsRows, Rows} = lists:split(N, Rows0),
-            Comments = [lists:map(fun get_cell_value/1, Comments0) || Comments0 <- CommentsRows],
-            NewData = Data#{comments => Comments, rows => Rows},
-            zip_header(NewData, TargetConfig);
-        _ ->
-            zip_header(Data, TargetConfig0)
-    end.
+skip_comments(#{skip_comments := true} = LoadSheetOpts, Data) -> %% N=1
+    #{rows := [Comments0 | Rows]} = Data,
+    Comments = lists:map(fun get_cell_value/1, Comments0),
+    NewData = Data#{comments => Comments, rows => Rows},
+    zip_header(NewData, LoadSheetOpts);
+skip_comments(#{skip_comments := N} = LoadSheetOpts, Data) when is_integer(N) ->
+    #{rows := Rows0} = Data,
+    {CommentsRows, Rows} = lists:split(N, Rows0),
+    Comments = [lists:map(fun get_cell_value/1, Comments0) || Comments0 <- CommentsRows],
+    NewData = Data#{comments => Comments, rows => Rows},
+    zip_header(NewData, LoadSheetOpts);
+skip_comments(LoadSheetOpts, Data) -> %% false
+    zip_header(Data, LoadSheetOpts).
 
-zip_header(Data, TargetConfig0) ->
-    {NewData, NewTargetConfig} =
-        case lists:keytake(data_structure, 1, TargetConfig0) of
-            {value, {_, map}, TargetConfig} ->
-                {zip_header_map(Data), TargetConfig};
-%%            {value, {_, RecordName}, TargetConfig} ->
-%%                Module = proplists:get_value(module, TargetConfig),
-%%                {zip_header_record(Module, RecordName, Data), TargetConfig};
-            false -> %% default atom map
-                {zip_header_map(Data), TargetConfig0}
-        end,
-    case NewData of
-        _ when is_map(NewData) ->
-            check_data_and_groups(NewData, NewTargetConfig);
+zip_header(#{rows := [Header0 | Rows0]} = Data, LoadSheetOpts) ->
+    case check_header(Header0) of
+        {ok, Header} ->
+            Rows = [maps:from_list(lists:zip(Header, Row)) || Row <- Rows0],
+            check_data_and_groups(Data#{header => Header, rows => Rows}, LoadSheetOpts);
         Err -> Err
     end.
 
-zip_header_map(#{rows := [Header0 | Rows0]} = Data) ->
-    Header = get_header(Header0),
-    Rows = [maps:from_list(lists:zip(Header, Row)) || Row <- Rows0],
-    Data#{data_structure => map, header => Header, rows => Rows}.
-
-%%zip_header_record(Module, RecordName, #{rows := [Header0 | Rows0]} = Data) ->
-%%    Header = get_header(Header0),
-%%    case erlang:function_exported(Module, '#new-', 1) of
-%%        true ->
-%%            Record = Module:'#new-'(RecordName),
-%%            Rows = [zip_header_record_do(Module, Record, Header, Row) || Row <- Rows0],
-%%            Data#{data_structure => record, header => Header, rows => Rows};
-%%        false ->
-%%            {not_exprecs_module, Module}
-%%    end.
-%%
-%%zip_header_record_do(Module, Record, Header, Row) ->
-%%    Proplists = lists:zip(Header, Row),
-%%    Module:'#fromlist-'(Proplists, Record).
-
-check_data_and_groups(Data, TargetConfig0) ->
-    Checks = proplists:get_value(checks, TargetConfig0, []),
-    case lists:keytake(groups, 1, TargetConfig0) of
-        {value, {groups, []}, _TargetConfig} ->
+check_data_and_groups(Data, LoadSheetOpts) ->
+    Checks = maps:get(checks, LoadSheetOpts, []),
+    case maps:get(groups, LoadSheetOpts, []) of
+        [] ->
             check_data(Data, Checks);
-        {value, {groups, Groups0}, _TargetConfig} ->
-            #{data_structure := DataStructure, header := Header} = Data,
+        Groups0 ->
+            #{header := Header} = Data,
             Groups = lists:flatten(Groups0),
             case Groups -- Header of
                 [] ->
@@ -128,14 +122,12 @@ check_data_and_groups(Data, TargetConfig0) ->
                             end, Checks),
                     case check_data(Data, Groups, NewChecks) of
                         {ok, NewData} ->
-                            groups(DataStructure, Groups0, NewData, GroupChecks);
+                            groups(Groups0, NewData, GroupChecks);
                         Err -> Err
                     end;
                 MissGroups ->
                     {undefined_groups, MissGroups}
-            end;
-        false ->
-            check_data(Data, Checks)
+            end
     end.
 
 check_data(Data, Checks) ->
@@ -169,15 +161,12 @@ check_rows_map(Field, [Row | Rows], Checks, Acc) ->
 check_rows_map(_Field, [], _Checks, Acc) ->
     {ok, lists:reverse(Acc)}.
 
-groups(DataStructure, Groups, #{rows := Rows} = Data, Checks) ->
-    Fun = get_group_fun_by_data_structure(DataStructure),
-    case Fun(Groups, Rows, Checks) of
+groups(Groups, #{rows := Rows} = Data, Checks) ->
+    case groups_map(Groups, Rows, Checks) of
         {ok, NewRows} ->
             {ok, Data#{rows := NewRows}};
         Err -> Err
     end.
-
-get_group_fun_by_data_structure(map) -> fun groups_map/3.
 
 groups_map([[GroupKey | SameGroups] | Groups], Rows, Checks) when is_atom(GroupKey) ->
     case groups_map_first_row(GroupKey, SameGroups, Rows, Checks) of
@@ -240,8 +229,19 @@ groups_map_rows(GroupKey, [Row | Rows], LastCell, DefaultRow, FieldCheckList, Sa
 groups_map_rows(_GroupKey, [], _LastCell, _DefaultRow, _FieldCheckList, _SameGroupChecks, Acc) ->
     {ok, Acc}.
 
-get_header(Header) ->
-    [binary_to_atom(Cell, utf8) || {_Row, _Col, _Type, Cell} <- Header].
+check_header([]) -> empty_header;
+check_header(Header) -> get_header(Header, []).
+
+get_header([{Row, Col, Type, Cell} | Header], NewHeader) ->
+    case catch binary_to_atom(Cell, utf8) of
+        {'EXIT', Reason} ->
+            {header_trans_to_atom, [
+                {row, Row}, {col, Col}, {type, Type}, {cell, Cell}, {err, Reason}
+            ]};
+        Field ->
+            get_header(Header, [Field | NewHeader])
+    end;
+get_header([], Header) -> {ok, lists:reverse(Header)}.
 
 is_empty(<<>>) -> true;
 is_empty([]) -> true;

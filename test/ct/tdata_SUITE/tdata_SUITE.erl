@@ -13,8 +13,7 @@ render(Config) ->
     OutputDir = filename:join(DataDir, "output"),
     filelib:ensure_dir(filename:join(OutputDir, "temp")),
     Res = lists:map(
-        fun(TransformDefine) ->
-            OutputFile0 = element(2, TransformDefine),
+        fun(#{output_file := OutputFile0}) ->
             OutputFile = filename:join(OutputDir, OutputFile0),
             filelib:is_file(OutputFile) andalso file:delete(OutputFile),
             {OutputFile0, ok}

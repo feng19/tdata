@@ -5,24 +5,33 @@
     render/4
 ]).
 
-render(skipped, _TplFile, _TemplateDir, _OutputFile) -> skipped;
-render({ok, RenderData}, {mustache, TplFile0}, TplDir, OutputFile) ->
-    TplFile = filename:join(TplDir, TplFile0),
+-export_type([tpl_type/0]).
+-type tpl_type() :: auto | mustache | dtl.
+
+%%====================================================================
+%% API functions
+%%====================================================================
+
+-spec render({ok, any()} | tuple(), tpl_type(), TplFile :: file:filename(),
+    OutputFile :: file:filename()) -> ok | tuple().
+render(skipped, _TplType, _TplFile, _OutputFile) -> skipped;
+render({ok, RenderData}, mustache, TplFile, OutputFile) ->
     render_mustache(TplFile, OutputFile, RenderData, [{key_type, atom}]);
-render({ok, RenderData, RenderOptions}, {mustache, TplFile0}, TplDir, OutputFile) ->
-    TplFile = filename:join(TplDir, TplFile0),
+render({ok, RenderData, RenderOptions}, mustache, TplFile, OutputFile) ->
     render_mustache(TplFile, OutputFile, RenderData, RenderOptions);
-render({ok, RenderData}, {dtl, TplFile0}, TplDir, OutputFile) ->
-    TplFile = filename:join(TplDir, TplFile0),
+render({ok, RenderData}, dtl, TplFile, OutputFile) ->
     render_dtl(TplFile, OutputFile, RenderData, []);
-render({ok, RenderData, RenderOptions}, {dtl, TplFile0}, TplDir, OutputFile) ->
-    TplFile = filename:join(TplDir, TplFile0),
+render({ok, RenderData, RenderOptions}, dtl, TplFile, OutputFile) ->
     render_dtl(TplFile, OutputFile, RenderData, RenderOptions);
-render({ok, ExportList, BodyIoList}, _TplFile, _TplDir, OutputFile) ->
+render({ok, ExportList, BodyIoList}, _TplType, _TplFile, OutputFile) ->
     render_erl(OutputFile, ExportList, BodyIoList);
-render({ok, IoList}, _TplFile, _TplDir, OutputFile) ->
+render({ok, IoList}, _TplType, _TplFile, OutputFile) ->
     write_file(OutputFile, IoList);
-render(Err, _TplFile, _TplDir, _OutputFile) -> Err.
+render(Err, _TplType, _TplFile, _OutputFile) -> Err.
+
+%%====================================================================
+%% Internal functions
+%%====================================================================
 
 render_mustache(TplFile, TargetFile, RenderData, RenderOptions) ->
     case file:read_file(TplFile) of

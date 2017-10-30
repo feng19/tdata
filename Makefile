@@ -23,7 +23,8 @@ distclean:
 .PHONY: test eunit ct testclean
 
 test: epmd
-	rebar3 do eunit, ct, cover
+	rebar3 do ct -v, cover
+	#rebar3 do eunit, ct, cover
 
 eunit: epmd
 	rebar3 do eunit -v, cover

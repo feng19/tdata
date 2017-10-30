@@ -1,4 +1,5 @@
 -module(transform_module).
+-behavior(tdata).
 
 %% API
 -export([
@@ -7,11 +8,20 @@
 
 transform_defines() ->
     [
-        {{"transform_module.xlsx", [{sheet_name, all, []}]}, "transform_module.data", fun transform_fun/3},
-        {{"transform_module.xlsx", [{sheet_name, all, []}]}, "transform_module_mustache.data",
-            {mustache, "transform_module.tpl"}, fun transform_mustache_fun/3},
-        {{"transform_module.xlsx", [{sheet_name, all, []}]}, "transform_module_dtl.data",
-            {dtl, "transform_module.dtl"}, fun transform_dtl_fun/3}
+        #{input_file_defines => {"transform_module.xlsx", #{all => #{}}},
+            output_file => "transform_module.data", transform_fun => fun transform_fun/3},
+        #{input_file_defines => {"transform_module.xlsx", #{all => #{}}},
+            output_file => "transform_module_mustache.data", transform_fun => fun transform_mustache_fun/3,
+            tpl_type => mustache, tpl_file => "transform_module.tpl"},
+        #{input_file_defines => {"transform_module.xlsx", #{all => #{}}},
+            output_file => "transform_module_mustache_no_tpl_type.data",
+            transform_fun => fun transform_mustache_fun/3, tpl_file => "transform_module.tpl"},
+        #{input_file_defines => {"transform_module.xlsx", #{all => #{}}},
+            output_file => "transform_module_dtl.data", transform_fun => fun transform_dtl_fun/3,
+            tpl_type => dtl, tpl_file => "transform_module.dtl"},
+        #{input_file_defines => {"transform_module.xlsx", #{all => #{}}},
+            output_file => "transform_module_dtl_auto_tpl_type.data", transform_fun => fun transform_dtl_fun/3,
+            tpl_type => auto, tpl_file => "transform_module.dtl"}
     ].
 
 transform_fun(_OutputFile, [{"transform_module.xlsx", #{<<"Sheet1">> := #{rows := Rows}}}], _TransformConfig) ->

@@ -4,13 +4,13 @@
 
 all() ->
     [
-        sheet_name
-        , all_sheet_name
-        , skip_comments
-        , skip_n_comments
-        , groups
-        , same_groups
-        , checks
+        sheet_name,
+        all_sheet_name,
+        skip_comments,
+        skip_n_comments,
+        groups,
+        same_groups,
+        checks
     ].
 
 init_per_testcase(_, Config) ->
@@ -24,8 +24,8 @@ end_per_testcase(_, Config) ->
 sheet_name(Config) ->
     PythonPid = ?config(py_pid, Config),
     ExcelFile = filename:join(?config(data_dir, Config), "sheet_name.xlsx"),
-    TargetConfig = [{sheet_name, <<"Sheet1">>, []}],
-    {ok, Sheets} = tdata_sheet:load_sheets(PythonPid, ExcelFile, TargetConfig),
+    LoadSheetsOpts = #{<<"Sheet1">> => #{}},
+    {ok, Sheets} = tdata_sheet:load_sheets(PythonPid, ExcelFile, LoadSheetsOpts),
     1 = maps:size(Sheets),
     true = maps:is_key(<<"Sheet1">>, Sheets),
     ok.
@@ -33,8 +33,8 @@ sheet_name(Config) ->
 all_sheet_name(Config) ->
     PythonPid = ?config(py_pid, Config),
     ExcelFile = filename:join(?config(data_dir, Config), "sheet_name.xlsx"),
-    TargetConfig = [{sheet_name, all, []}],
-    {ok, Sheets} = tdata_sheet:load_sheets(PythonPid, ExcelFile, TargetConfig),
+    LoadSheetsOpts = #{all => #{}},
+    {ok, Sheets} = tdata_sheet:load_sheets(PythonPid, ExcelFile, LoadSheetsOpts),
     2 = maps:size(Sheets),
     true = maps:is_key(<<"Sheet1">>, Sheets),
     true = maps:is_key(<<"Sheet2">>, Sheets),
@@ -43,24 +43,24 @@ all_sheet_name(Config) ->
 skip_comments(Config) ->
     PythonPid = ?config(py_pid, Config),
     ExcelFile = filename:join(?config(data_dir, Config), "skip_comments.xlsx"),
-    TargetConfig = [{sheet_name, <<"Sheet1">>, [{skip_comments, true}]}],
-    {ok, Sheets} = tdata_sheet:load_sheets(PythonPid, ExcelFile, TargetConfig),
+    LoadSheetsOpts = #{<<"Sheet1">> => #{skip_comments => true}},
+    {ok, Sheets} = tdata_sheet:load_sheets(PythonPid, ExcelFile, LoadSheetsOpts),
     #{<<"Sheet1">> := #{comments := [<<"comments">>]}} = Sheets,
     ok.
 
 skip_n_comments(Config) ->
     PythonPid = ?config(py_pid, Config),
     ExcelFile = filename:join(?config(data_dir, Config), "skip_comments.xlsx"),
-    TargetConfig = [{sheet_name, <<"Sheet2">>, [{skip_comments, 2}]}],
-    {ok, Sheets} = tdata_sheet:load_sheets(PythonPid, ExcelFile, TargetConfig),
+    LoadSheetsOpts = #{<<"Sheet2">> => #{skip_comments => 2}},
+    {ok, Sheets} = tdata_sheet:load_sheets(PythonPid, ExcelFile, LoadSheetsOpts),
     #{<<"Sheet2">> := #{comments := [[<<"comments1">>], [<<"comments2">>]]}} = Sheets,
     ok.
 
 groups(Config) ->
     PythonPid = ?config(py_pid, Config),
     ExcelFile = filename:join(?config(data_dir, Config), "groups.xlsx"),
-    TargetConfig = [{sheet_name, <<"Sheet1">>, [{groups, [level_1, level_2]}]}],
-    {ok, Sheets} = tdata_sheet:load_sheets(PythonPid, ExcelFile, TargetConfig),
+    LoadSheetsOpts = #{<<"Sheet1">> => #{groups => [level_1, level_2]}},
+    {ok, Sheets} = tdata_sheet:load_sheets(PythonPid, ExcelFile, LoadSheetsOpts),
     Rows = #{level_1 => #{1 => #{level_2 => #{
         21 => [#{level_1 => 1, level_2 => 21, level_3 => 31}, #{level_1 => 1, level_2 => 21, level_3 => 32}],
         22 => [#{level_1 => 1, level_2 => 22, level_3 => 33}, #{level_1 => 1, level_2 => 22, level_3 => 34}]
@@ -71,8 +71,8 @@ groups(Config) ->
 same_groups(Config) ->
     PythonPid = ?config(py_pid, Config),
     ExcelFile = filename:join(?config(data_dir, Config), "groups.xlsx"),
-    TargetConfig = [{sheet_name, <<"Sheet2">>, [{groups, [[level_1, level_2]]}]}],
-    {ok, Sheets} = tdata_sheet:load_sheets(PythonPid, ExcelFile, TargetConfig),
+    LoadSheetsOpts = #{<<"Sheet2">> => #{groups => [[level_1, level_2]]}},
+    {ok, Sheets} = tdata_sheet:load_sheets(PythonPid, ExcelFile, LoadSheetsOpts),
     Rows = #{level_1 => #{1 => [
         #{level_1 => 1, level_2 => 2, level_3 => 31},
         #{level_1 => 1, level_2 => 2, level_3 => 32},
@@ -85,12 +85,12 @@ same_groups(Config) ->
 checks(Config) ->
     PythonPid = ?config(py_pid, Config),
     ExcelFile = filename:join(?config(data_dir, Config), "checks.xlsx"),
-    TargetConfig = [{sheet_name, <<"Sheet1">>, [{checks, [
+    LoadSheetsOpts = #{<<"Sheet1">> => #{checks => [
         {int, [check_integer]},
         {double_int, [check_integer, tdata_util:cell_to_fun(fun double/1)]},
         {str, [check_not_empty]}
-    ]}]}],
-    {ok, Sheets} = tdata_sheet:load_sheets(PythonPid, ExcelFile, TargetConfig),
+    ]}},
+    {ok, Sheets} = tdata_sheet:load_sheets(PythonPid, ExcelFile, LoadSheetsOpts),
     Rows = [
         #{double_int => 2, int => 1, str => <<"abc1">>},
         #{double_int => 4, int => 2, str => <<"abc2">>},

@@ -6,10 +6,8 @@
     check_not_empty/1,
 
     cell_to_fun/1,
-
     cell_trans_punctuation/1,
 
-    key_delete_all/3,
     trans_punctuation/1,
     trans_punctuation/2
 ]).
@@ -32,12 +30,6 @@ cell_to_fun(Fun) ->
 
 cell_trans_punctuation(Cell) ->
     {ok, trans_punctuation(Cell)}.
-
-key_delete_all(Key, N, [H|T]) when element(N, H)==Key ->
-    key_delete_all(Key, N, T);
-key_delete_all(Key, N, [H|T]) ->
-    [H|key_delete_all(Key, N, T)];
-key_delete_all(_Key, _N, []) -> [].
 
 %% trans double byte punctuation
 %% 转换双字节标点符号
