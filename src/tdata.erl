@@ -37,11 +37,13 @@
 %% API functions
 %%====================================================================
 
+-spec start() -> {ok, pid()} | {error, Reason :: term()}.
 start() ->
     PythonPath = filename:join(code:priv_dir(?MODULE), "python/"),
     ErlPortPath = filename:join(code:priv_dir(erlport), "python2/"),
     python:start([{cd, ErlPortPath}, {python_path, PythonPath}]).
 
+-spec stop(pid()) -> ok.
 stop(PythonPid) ->
     python:stop(PythonPid).
 
@@ -83,15 +85,15 @@ transform_file(TransformDefine, PythonPid, Config, TransformConfig) ->
 
 transform_file_do(InputFileDefines, OutputFile0, OutputFile, TransformDefine,
     InputDir, TplType, TplFile, TransformConfig, PythonPid) ->
-    ExcelData = load_excel_files(InputFileDefines, InputDir, PythonPid, []),
+    ExcelDataList = load_excel_files(InputFileDefines, InputDir, PythonPid, []),
     #{transform_fun := TransformFun} = TransformDefine,
-    Data = TransformFun(OutputFile0, ExcelData, TransformConfig),
+    Data = TransformFun(OutputFile0, ExcelDataList, TransformConfig),
+    SourceFiles = unicode:characters_to_binary(string:join([Excel||{Excel, _}<-ExcelDataList], ",")),
+    HeaderComments = <<"%% Automatically generated, do not edit\n%% Source Files: ", SourceFiles/binary, "\n">>,
 
-    case tdata_render:render(Data, TplType, TplFile, OutputFile) of
-        ok ->
-            {OutputFile0, ok};
-        Err ->
-            {OutputFile0, Err}
+    case tdata_render:render(Data, TplType, TplFile, OutputFile, HeaderComments) of
+        ok -> {OutputFile0, ok};
+        Err -> {OutputFile0, Err}
     end.
 
 check_transform_define(#{output_file := OutputFile0} = TransformDefine) ->
@@ -155,14 +157,13 @@ is_need_transform(InputFiles, OutputFile, TplFile0) ->
             Input > Output orelse Tpl > Output
     end.
 
-load_excel_files({ExcelFile, LoadSheetsOpts}, InputDir, PythonPid, Data) ->
+load_excel_files({ExcelFile, LoadSheetsOpts}, InputDir, PythonPid, Acc) ->
     Res = load_excel_file(ExcelFile, LoadSheetsOpts, InputDir, PythonPid),
-    [Res | Data];
-load_excel_files([{ExcelFile, LoadSheetsOpts} | ExcelFiles], InputDir, PythonPid, Data) ->
+    [Res | Acc];
+load_excel_files([{ExcelFile, LoadSheetsOpts} | ExcelFiles], InputDir, PythonPid, Acc) ->
     Res = load_excel_file(ExcelFile, LoadSheetsOpts, InputDir, PythonPid),
-    load_excel_files(ExcelFiles, InputDir, PythonPid, [Res | Data]);
-load_excel_files([], _InputDir, _PythonPid, Data) ->
-    Data.
+    load_excel_files(ExcelFiles, InputDir, PythonPid, [Res | Acc]);
+load_excel_files([], _InputDir, _PythonPid, Acc) -> Acc.
 
 load_excel_file(ExcelFile0, LoadSheetsOpts, InputDir, PythonPid) ->
     ExcelFile = filename:join(InputDir, ExcelFile0),

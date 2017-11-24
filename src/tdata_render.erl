@@ -2,7 +2,7 @@
 
 %% API
 -export([
-    render/4
+    render/5
 ]).
 
 -export_type([tpl_type/0]).
@@ -13,52 +13,52 @@
 %%====================================================================
 
 -spec render({ok, any()} | tuple(), tpl_type(), TplFile :: file:filename(),
-    OutputFile :: file:filename()) -> ok | tuple().
-render(skipped, _TplType, _TplFile, _OutputFile) -> skipped;
-render({ok, RenderData}, mustache, TplFile, OutputFile) ->
-    render_mustache(TplFile, OutputFile, RenderData, [{key_type, atom}]);
-render({ok, RenderData, RenderOptions}, mustache, TplFile, OutputFile) ->
-    render_mustache(TplFile, OutputFile, RenderData, RenderOptions);
-render({ok, RenderData}, dtl, TplFile, OutputFile) ->
-    render_dtl(TplFile, OutputFile, RenderData, []);
-render({ok, RenderData, RenderOptions}, dtl, TplFile, OutputFile) ->
-    render_dtl(TplFile, OutputFile, RenderData, RenderOptions);
-render({ok, ExportList, BodyIoList}, _TplType, _TplFile, OutputFile) ->
-    render_erl(OutputFile, ExportList, BodyIoList);
-render({ok, IoList}, _TplType, _TplFile, OutputFile) ->
-    write_file(OutputFile, IoList);
-render(Err, _TplType, _TplFile, _OutputFile) -> Err.
+    OutputFile :: file:filename(), HeaderComments :: binary()) -> ok | tuple().
+render(skipped, _TplType, _TplFile, _OutputFile, _HeaderComments) -> skipped;
+render({ok, RenderData}, mustache, TplFile, OutputFile, HeaderComments) ->
+    render_mustache(TplFile, OutputFile, HeaderComments, RenderData, [{key_type, atom}]);
+render({ok, RenderData, RenderOptions}, mustache, TplFile, OutputFile, HeaderComments) ->
+    render_mustache(TplFile, OutputFile, HeaderComments, RenderData, RenderOptions);
+render({ok, RenderData}, dtl, TplFile, OutputFile, HeaderComments) ->
+    render_dtl(TplFile, OutputFile, HeaderComments, RenderData, []);
+render({ok, RenderData, RenderOptions}, dtl, TplFile, OutputFile, HeaderComments) ->
+    render_dtl(TplFile, OutputFile, HeaderComments, RenderData, RenderOptions);
+render({ok, ExportList, BodyIoList}, _TplType, _TplFile, OutputFile, HeaderComments) ->
+    render_erl(OutputFile, HeaderComments, ExportList, BodyIoList);
+render({ok, IoList}, _TplType, _TplFile, OutputFile, HeaderComments) ->
+    write_file(OutputFile, [HeaderComments | IoList]);
+render(Err, _TplType, _TplFile, _OutputFile, _HeaderComments) -> Err.
 
 %%====================================================================
 %% Internal functions
 %%====================================================================
 
-render_mustache(TplFile, TargetFile, RenderData, RenderOptions) ->
+render_mustache(TplFile, TargetFile, HeaderComments, RenderData, RenderOptions) ->
     case file:read_file(TplFile) of
         {ok, RenderBin} ->
             IoList = bbmustache:render(RenderBin, RenderData, RenderOptions),
-            write_file(TargetFile, IoList);
+            write_file(TargetFile, [HeaderComments | IoList]);
         Err -> Err
     end.
 
-render_erl(TargetFile, ExportList, BodyIoList) ->
+render_erl(TargetFile, HeaderComments, ExportList, BodyIoList) ->
     TargetModule = filename:rootname(filename:basename(TargetFile)),
     IoList = [
         gen_module_header(TargetModule),
         gen_export(ExportList),
         BodyIoList
     ],
-    write_file(TargetFile, IoList).
+    write_file(TargetFile, [HeaderComments | IoList]).
 
-render_dtl(TplFile, TargetFile, RenderData, RenderOptions) ->
-    ModuleName = filename:rootname(filename:basename(TplFile))++"_dtl",
+render_dtl(TplFile, TargetFile, HeaderComments, RenderData, RenderOptions) ->
+    ModuleName = filename:rootname(filename:basename(TplFile)) ++ "_dtl",
     case erlydtl:compile_file(TplFile, ModuleName, [binary]) of
         {ok, Module} ->
             {ok, IoList} = Module:render(RenderData, RenderOptions),
-            write_file(TargetFile, IoList);
+            write_file(TargetFile, [HeaderComments | IoList]);
         {ok, Module, _} ->
             {ok, IoList} = Module:render(RenderData, RenderOptions),
-            write_file(TargetFile, IoList);
+            write_file(TargetFile, [HeaderComments | IoList]);
         Err -> Err
     end.
 
