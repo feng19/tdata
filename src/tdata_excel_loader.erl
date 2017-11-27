@@ -1,4 +1,4 @@
--module(tdata_sheet).
+-module(tdata_excel_loader).
 
 %% API
 -export([

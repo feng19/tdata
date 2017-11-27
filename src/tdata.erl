@@ -3,14 +3,17 @@
 %% API exports
 -export([
     start/0,
-    stop/1,
-    transform_files/4,
-    transform_file/4
+    init_excel_loader/0,
+    init_excel_loader/2,
+    stop/0,
+    get_python_pid/0,
+    transform_files/3,
+    transform_file/3
 ]).
 
 -type input_file() :: file:filename().
 -type output_file() :: file:filename().
--type input_file_define() :: {input_file(), tdata_sheet:load_sheets_opts()}.
+-type input_file_define() :: {input_file(), tdata_excel_loader:load_sheets_opts()}.
 -type transform_define() :: #{
     input_file_defines := input_file_define() | [input_file_define()],
     output_file := output_file(),
@@ -37,29 +40,54 @@
 %% API functions
 %%====================================================================
 
--spec start() -> {ok, pid()} | {error, Reason :: term()}.
 start() ->
+    ensure_ets(),
+    tdata_loader:ensure_ets(),
+    ok.
+
+-spec init_excel_loader() -> ok.
+init_excel_loader() ->
     PythonPath = filename:join(code:priv_dir(?MODULE), "python/"),
     ErlPortPath = filename:join(code:priv_dir(erlport), "python2/"),
-    python:start([{cd, ErlPortPath}, {python_path, PythonPath}]).
+    init_excel_loader(ErlPortPath, PythonPath).
+-spec init_excel_loader(file:filename(), file:filename()) -> {ok, pid()} | {error, Reason :: term()}.
+init_excel_loader(ErlPortPath, PythonPath) ->
+    {ok, PythonPid} = python:start([{cd, ErlPortPath}, {python_path, PythonPath}]),
+    tdata_loader:init_excel_loader(PythonPid),
+    ets:insert(?MODULE, {python_pid, PythonPid}),
+    ok.
 
--spec stop(pid()) -> ok.
-stop(PythonPid) ->
-    python:stop(PythonPid).
+-spec stop() -> ok.
+stop() ->
+    case get_python_pid() of
+        undefined -> ok;
+        PythonPid ->
+            python:stop(PythonPid)
+    end,
+    ets:delete(?MODULE),
+    ets:delete(tdata_loader),
+    ok.
 
--spec transform_files(PythonPid :: pid(), HandleModule :: module() | transform_define() | transform_defines(),
+-spec get_python_pid() -> pid() | undefined.
+get_python_pid() ->
+    case ets:lookup(?MODULE, python_pid) of
+        [{_, PythonPid}] -> PythonPid;
+        _ -> undefined
+    end.
+
+-spec transform_files(HandleModule :: module() | transform_define() | transform_defines(),
     global_config(), transform_fun_config()) -> output_files().
-transform_files(PythonPid, HandleModule, Config, TransformConfig) when is_atom(HandleModule) ->
+transform_files(HandleModule, Config, TransformConfig) when is_atom(HandleModule) ->
     TransformDefines = HandleModule:transform_defines(),
-    transform_files(PythonPid, TransformDefines, Config, TransformConfig);
-transform_files(PythonPid, TransformDefines, Config, TransformConfig) when is_list(TransformDefines) ->
-    [transform_file(TransformDefine, PythonPid, Config, TransformConfig)
+    transform_files(TransformDefines, Config, TransformConfig);
+transform_files(TransformDefines, Config, TransformConfig) when is_list(TransformDefines) ->
+    [transform_file(TransformDefine, Config, TransformConfig)
         || TransformDefine <- TransformDefines];
-transform_files(PythonPid, TransformDefine, Config, TransformConfig) when is_map(TransformDefine) ->
-    transform_file(TransformDefine, PythonPid, Config, TransformConfig).
+transform_files(TransformDefine, Config, TransformConfig) when is_map(TransformDefine) ->
+    transform_file(TransformDefine, Config, TransformConfig).
 
--spec transform_file(transform_define(), PythonPid :: pid(), global_config(), transform_fun_config()) -> output().
-transform_file(TransformDefine, PythonPid, Config, TransformConfig) ->
+-spec transform_file(transform_define(), global_config(), transform_fun_config()) -> output().
+transform_file(TransformDefine, Config, TransformConfig) ->
     case check_transform_define(TransformDefine) of
         ok ->
             #{input_file_defines := InputFileDefines, output_file := OutputFile0} = TransformDefine,
@@ -72,7 +100,7 @@ transform_file(TransformDefine, PythonPid, Config, TransformConfig) ->
             case is_need_transform(InputFiles, OutputFile, TplFile) of
                 true ->
                     transform_file_do(InputFileDefines, OutputFile0, OutputFile, TransformDefine,
-                        InputDir, TplType, TplFile, TransformConfig, PythonPid);
+                        InputDir, TplType, TplFile, TransformConfig);
                 false ->
                     {OutputFile0, skipped}
             end;
@@ -83,12 +111,19 @@ transform_file(TransformDefine, PythonPid, Config, TransformConfig) ->
 %% Internal functions
 %%====================================================================
 
+ensure_ets() ->
+    case ets:info(?MODULE, size) of
+        undefined ->
+            ets:new(?MODULE, [named_table, public, set]);
+        _ -> ?MODULE
+    end.
+
 transform_file_do(InputFileDefines, OutputFile0, OutputFile, TransformDefine,
-    InputDir, TplType, TplFile, TransformConfig, PythonPid) ->
-    ExcelDataList = load_excel_files(InputFileDefines, InputDir, PythonPid, []),
+    InputDir, TplType, TplFile, TransformConfig) ->
+    InputDataList = tdata_loader:load_input_files(InputFileDefines, InputDir, []),
     #{transform_fun := TransformFun} = TransformDefine,
-    Data = TransformFun(OutputFile0, ExcelDataList, TransformConfig),
-    SourceFiles = unicode:characters_to_binary(string:join([Excel||{Excel, _}<-ExcelDataList], ",")),
+    Data = TransformFun(OutputFile0, InputDataList, TransformConfig),
+    SourceFiles = unicode:characters_to_binary(string:join([InputFile || {InputFile, _} <- InputDataList], ",")),
     HeaderComments = <<"%% Automatically generated, do not edit\n%% Source Files: ", SourceFiles/binary, "\n">>,
 
     case tdata_render:render(Data, TplType, TplFile, OutputFile, HeaderComments) of
@@ -155,21 +190,4 @@ is_need_transform(InputFiles, OutputFile, TplFile0) ->
         TplFile ->
             Tpl = filelib:last_modified(TplFile),
             Input > Output orelse Tpl > Output
-    end.
-
-load_excel_files({ExcelFile, LoadSheetsOpts}, InputDir, PythonPid, Acc) ->
-    Res = load_excel_file(ExcelFile, LoadSheetsOpts, InputDir, PythonPid),
-    [Res | Acc];
-load_excel_files([{ExcelFile, LoadSheetsOpts} | ExcelFiles], InputDir, PythonPid, Acc) ->
-    Res = load_excel_file(ExcelFile, LoadSheetsOpts, InputDir, PythonPid),
-    load_excel_files(ExcelFiles, InputDir, PythonPid, [Res | Acc]);
-load_excel_files([], _InputDir, _PythonPid, Acc) -> Acc.
-
-load_excel_file(ExcelFile0, LoadSheetsOpts, InputDir, PythonPid) ->
-    ExcelFile = filename:join(InputDir, ExcelFile0),
-    case tdata_sheet:load_sheets(PythonPid, ExcelFile, LoadSheetsOpts) of
-        {ok, SheetsData} ->
-            {ExcelFile0, SheetsData};
-        Err ->
-            error({load_sheets_error, {ExcelFile0, Err}})
     end.
