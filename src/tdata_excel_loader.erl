@@ -1,7 +1,13 @@
 -module(tdata_excel_loader).
+-behavior(tdata_loader).
 
 %% API
 -export([
+    start/0,
+    stop/0,
+    set_python_dir/0,
+    set_python_dir/2,
+    load_sheets/2,
     load_sheets/3
 ]).
 
@@ -13,7 +19,7 @@
     check_float |
     check_not_empty |
     cell_trans_punctuation |
-function().
+    function().
 -type check_field() :: {field_name(), [field_check_opt()]}.
 -type sheet_name() :: binary() | all.
 -type load_sheet_opts() :: #{
@@ -27,6 +33,58 @@ function().
 %% API functions
 %%====================================================================
 
+start() ->
+    init_excel_loader().
+
+stop() ->
+    case tdata:get_key(python_pid) of
+        undefined -> ok;
+        PythonPid ->
+            python:stop(PythonPid)
+    end,
+    tdata_loader:del_loader("default"),
+    tdata_loader:del_loader(".xls"),
+    tdata_loader:del_loader(".xlsx"),
+    ok.
+
+set_python_dir() ->
+    PythonPath = filename:join(code:priv_dir(tdata), "python/"),
+    ErlPortPath = filename:join(code:priv_dir(erlport), "python2/"),
+    set_python_dir(PythonPath, ErlPortPath).
+set_python_dir(PythonPath, ErlPortPath) ->
+    tdata:set_key(python_path, PythonPath),
+    tdata:set_key(erl_port_path, ErlPortPath),
+    ok.
+
+-spec init_excel_loader() -> ok.
+init_excel_loader() ->
+    PythonPath =
+        case tdata:get_key(python_path) of
+            undefined ->
+                set_python_dir(),
+                tdata:get_key(python_path);
+            T -> T
+        end,
+    ErlPortPath = tdata:get_key(erl_port_path),
+    init_excel_loader(ErlPortPath, PythonPath).
+-spec init_excel_loader(file:filename(), file:filename()) -> {ok, pid()} | {error, Reason :: term()}.
+init_excel_loader(ErlPortPath, PythonPath) ->
+    {ok, PythonPid} = python:start([{cd, ErlPortPath}, {python_path, PythonPath}]),
+    ExcelLoader =
+        fun(ExcelFile, LoadSheetsOpts) ->
+            load_sheets(PythonPid, ExcelFile, LoadSheetsOpts)
+        end,
+    tdata_loader:set_loader("default", ExcelLoader),
+    tdata_loader:set_loader(".xls", ExcelLoader),
+    tdata_loader:set_loader(".xlsx", ExcelLoader),
+    tdata:set_key(python_pid, PythonPid),
+    ok.
+
+-spec load_sheets(ExcelFile :: file:filename(), load_sheets_opts()) ->
+    {ok, Data :: map()} | tuple().
+load_sheets(ExcelFile, LoadSheetsOpts) ->
+    PythonPid = tdata:get_key(python_pid),
+    load_sheets(PythonPid, ExcelFile, LoadSheetsOpts).
 -spec load_sheets(PythonPid :: pid(), ExcelFile :: file:filename(), load_sheets_opts()) ->
     {ok, Data :: map()} | tuple().
 load_sheets(PythonPid, ExcelFile, LoadSheetsOpts) when is_map(LoadSheetsOpts) ->

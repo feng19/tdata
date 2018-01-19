@@ -3,10 +3,11 @@
 %% API exports
 -export([
     start/0,
-    init_excel_loader/0,
-    init_excel_loader/2,
+    start/2,
     stop/0,
-    get_python_pid/0,
+    set_key/2,
+    get_key/1,
+    transform_all/2,
     transform_files/3,
     transform_file/3
 ]).
@@ -41,39 +42,28 @@
 %%====================================================================
 
 start() ->
-    ensure_ets(),
-    tdata_loader:ensure_ets(),
-    ok.
+    application:ensure_all_started(?MODULE).
 
--spec init_excel_loader() -> ok.
-init_excel_loader() ->
-    PythonPath = filename:join(code:priv_dir(?MODULE), "python/"),
-    ErlPortPath = filename:join(code:priv_dir(erlport), "python2/"),
-    init_excel_loader(ErlPortPath, PythonPath).
--spec init_excel_loader(file:filename(), file:filename()) -> {ok, pid()} | {error, Reason :: term()}.
-init_excel_loader(ErlPortPath, PythonPath) ->
-    {ok, PythonPid} = python:start([{cd, ErlPortPath}, {python_path, PythonPath}]),
-    tdata_loader:init_excel_loader(PythonPid),
-    ets:insert(?MODULE, {python_pid, PythonPid}),
-    ok.
+start(_, _) ->
+    tdata_loader:start(),
+    Pid = spawn_link(fun() -> receive shutdown -> ok end end),
+    {ok, Pid}.
 
 -spec stop() -> ok.
 stop() ->
-    case get_python_pid() of
-        undefined -> ok;
-        PythonPid ->
-            python:stop(PythonPid)
-    end,
-    ets:delete(?MODULE),
-    ets:delete(tdata_loader),
+    tdata_loader:stop(),
     ok.
 
--spec get_python_pid() -> pid() | undefined.
-get_python_pid() ->
-    case ets:lookup(?MODULE, python_pid) of
-        [{_, PythonPid}] -> PythonPid;
-        _ -> undefined
-    end.
+set_key(Key, Value) ->
+    application:set_env(?MODULE, Key, Value).
+
+get_key(Key) ->
+    application:get_env(?MODULE, Key, undefined).
+
+-spec transform_all(global_config(), transform_fun_config()) -> output_files().
+transform_all(Config, TransformConfig) ->
+    [transform_files(HandleModule, Config, TransformConfig) ||
+        HandleModule <- tdata_loader:all_attr_modules(behavior, [?MODULE])].
 
 -spec transform_files(HandleModule :: module() | transform_define() | transform_defines(),
     global_config(), transform_fun_config()) -> output_files().
@@ -110,13 +100,6 @@ transform_file(TransformDefine, Config, TransformConfig) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
-
-ensure_ets() ->
-    case ets:info(?MODULE, size) of
-        undefined ->
-            ets:new(?MODULE, [named_table, public, set]);
-        _ -> ?MODULE
-    end.
 
 transform_file_do(InputFileDefines, OutputFile0, OutputFile, TransformDefine,
     InputDir, TplType, TplFile, TransformConfig) ->

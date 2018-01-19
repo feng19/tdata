@@ -7,8 +7,7 @@
 ]).
 
 init(Id, _Opts) ->
-    tdata:start(),
-    tdata:init_excel_loader(),
+    {ok, _} = tdata:start(),
     {ok, Id}.
 
 terminate(_) ->
