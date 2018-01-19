@@ -4,9 +4,9 @@
 -export([
     start/0,
     stop/0,
-    set_loader/2,
-    get_loader/1,
-    del_loader/1,
+    set_loader/1, set_loader/2,
+    get_loader/0, get_loader/1,
+    del_loader/0, del_loader/1,
     load_input_files/3,
     all_attr_modules/2
 ]).
@@ -20,12 +20,12 @@
 
 start() ->
     ensure_ets(),
-    [Module:start()||Module <- all_attr_modules(behavior, [?MODULE])],
+    [Module:start() || Module <- all_attr_modules(behavior, [?MODULE])],
     ok.
 
 stop() ->
+    [Module:stop() || Module <- all_attr_modules(behavior, [?MODULE])],
     ets:delete(?MODULE),
-    [Module:stop()||Module <- all_attr_modules(behavior, [?MODULE])],
     ok.
 
 ensure_ets() ->
@@ -35,15 +35,21 @@ ensure_ets() ->
         _ -> ?MODULE
     end.
 
+set_loader(Loader) ->
+    set_loader("default", Loader).
 set_loader(Ext, Loader) when is_list(Ext) andalso is_function(Loader, 2) ->
     ets:insert(?MODULE, {Ext, Loader}).
 
+get_loader() ->
+    get_loader("default").
 get_loader(Ext) when is_list(Ext) ->
     case ets:lookup(?MODULE, Ext) of
         [{_, Loader}] -> Loader;
         _ -> undefined
     end.
 
+del_loader() ->
+    del_loader("default").
 del_loader(Ext) ->
     ets:delete(?MODULE, Ext).
 
@@ -76,7 +82,7 @@ load_input_file(InputFile0, LoadSheetsOpts, InputDir) ->
     Ext = filename:extension(InputFile),
     Loader =
         case get_loader(Ext) of
-            undefined -> get_loader("default");
+            undefined -> get_loader();
             Loader0 -> Loader0
         end,
     case Loader(InputFile, LoadSheetsOpts) of

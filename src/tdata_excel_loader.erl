@@ -42,7 +42,7 @@ stop() ->
         PythonPid ->
             python:stop(PythonPid)
     end,
-    tdata_loader:del_loader("default"),
+    tdata_loader:del_loader(),
     tdata_loader:del_loader(".xls"),
     tdata_loader:del_loader(".xlsx"),
     ok.
@@ -74,7 +74,7 @@ init_excel_loader(ErlPortPath, PythonPath) ->
         fun(ExcelFile, LoadSheetsOpts) ->
             load_sheets(PythonPid, ExcelFile, LoadSheetsOpts)
         end,
-    tdata_loader:set_loader("default", ExcelLoader),
+    tdata_loader:set_loader(ExcelLoader),
     tdata_loader:set_loader(".xls", ExcelLoader),
     tdata_loader:set_loader(".xlsx", ExcelLoader),
     tdata:set_key(python_pid, PythonPid),
