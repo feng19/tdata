@@ -99,7 +99,7 @@ transform_file(TransformDefine, Config, TransformConfig) ->
             OutputFile = filename:join(OutputDir, OutputFile0),
             ok = filelib:ensure_dir(OutputFile),
             {TplType, TplFile} = get_tpl_info(TransformDefine, Config),
-            case is_need_transform(InputFiles, OutputFile, TplFile) of
+            case is_all_file(InputFiles) andalso is_need_transform(InputFiles, OutputFile, TplFile) of
                 true ->
                     transform_file_do(InputFileDefines, OutputFile0, OutputFile, TransformDefine,
                         InputDir, TplType, TplFile, TransformConfig);
@@ -182,6 +182,10 @@ get_tpl_dir(TransformDefine, Config) ->
             maps:get(template_dir, Config);
         TplDir -> TplDir
     end.
+
+is_all_file([]) -> true;
+is_all_file([InputFile | InputFiles]) ->
+    filelib:is_file(InputFile) andalso not filelib:is_dir(InputFile) andalso is_all_file(InputFiles).
 
 is_need_transform(InputFiles, OutputFile, TplFile0) ->
     Input = lists:max([filelib:last_modified(InputFile) || InputFile <- InputFiles]),
