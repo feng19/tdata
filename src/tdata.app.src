@@ -1,6 +1,6 @@
 {application,tdata,
              [{description,"transform excel files to erl files"},
-              {vsn,"1.1.2"},
+              {vsn,"1.1.3"},
               {registered,[]},
               {applications,[kernel,stdlib]},
               {mod,{tdata,[]}},
