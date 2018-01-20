@@ -53,12 +53,20 @@ del_loader() ->
 del_loader(Ext) ->
     ets:delete(?MODULE, Ext).
 
-load_input_files({InputFile, LoadSheetsOpts}, InputDir, Acc) ->
-    Res = load_input_file(InputFile, LoadSheetsOpts, InputDir),
+load_input_files({InputFile, Opts}, InputDir, Acc) ->
+    Res = load_input_file(InputFile, Opts, InputDir),
     [Res | Acc];
-load_input_files([{InputFile, LoadSheetsOpts} | InputFiles], InputDir, Acc) ->
-    Res = load_input_file(InputFile, LoadSheetsOpts, InputDir),
+load_input_files(#{file := InputFile, opts := Opts}, InputDir, Acc) ->
+    Res = load_input_file(InputFile, Opts, InputDir),
+    [Res | Acc];
+load_input_files([{InputFile, Opts} | InputFiles], InputDir, Acc) ->
+    Res = load_input_file(InputFile, Opts, InputDir),
     load_input_files(InputFiles, InputDir, [Res | Acc]);
+load_input_files([#{file := InputFile, opts := Opts} | InputFiles], InputDir, Acc) ->
+    Res = load_input_file(InputFile, Opts, InputDir),
+    load_input_files(InputFiles, InputDir, [Res | Acc]);
+load_input_files(InputFileDefines, InputDir, Acc) when is_map(InputFileDefines) ->
+    load_input_files(maps:to_list(InputFileDefines), InputDir, Acc);
 load_input_files([], _InputDir, Acc) -> Acc.
 
 all_attr_modules(Attr, Value) ->
@@ -77,7 +85,7 @@ all_attr_modules(Attr, Value) ->
 %% Internal functions
 %%====================================================================
 
-load_input_file(InputFile0, LoadSheetsOpts, InputDir) ->
+load_input_file(InputFile0, Opts, InputDir) ->
     InputFile = filename:join(InputDir, InputFile0),
     Ext = filename:extension(InputFile),
     Loader =
@@ -85,9 +93,9 @@ load_input_file(InputFile0, LoadSheetsOpts, InputDir) ->
             undefined -> get_loader();
             Loader0 -> Loader0
         end,
-    case Loader(InputFile, LoadSheetsOpts) of
-        {ok, SheetsData} ->
-            {InputFile0, SheetsData};
+    case Loader(InputFile, Opts) of
+        {ok, OutputData} ->
+            {InputFile0, OutputData};
         Err ->
             error({load_error, {InputFile0, Err}})
     end.

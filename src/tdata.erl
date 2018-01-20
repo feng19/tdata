@@ -23,9 +23,12 @@
 
 -type input_file() :: file:filename().
 -type output_file() :: file:filename().
--type input_file_define() :: {input_file(), tdata_excel_loader:load_sheets_opts()}.
+-type input_file_opts() :: any().
+-type input_file_define() ::
+    {input_file(), input_file_opts()} |
+    #{file := input_file(), opts := input_file_opts()}.
 -type transform_define() :: #{
-    input_file_defines := input_file_define() | [input_file_define()],
+    input_file_defines := input_file_define() | [input_file_define()] | map(),
     output_file := output_file(),
     transform_fun := function(),
     tpl_type => tdata_render:tpl_type(),
@@ -138,10 +141,17 @@ check_transform_define(#{output_file := OutputFile0} = TransformDefine) ->
 check_transform_define(_TransformDefine) ->
     error(miss_output_file).
 
+get_input_files_from_defines(#{file := InputFile}, InputDir) ->
+    [filename:join(InputDir, InputFile)];
 get_input_files_from_defines({InputFile, _}, InputDir) ->
     [filename:join(InputDir, InputFile)];
 get_input_files_from_defines(InputFileDefines, InputDir) when is_list(InputFileDefines) ->
-    [filename:join(InputDir, InputFile) || {InputFile, _} <- InputFileDefines];
+    [get_input_files_from_defines(InputFileDefine, InputDir) || InputFileDefine <- InputFileDefines];
+get_input_files_from_defines(InputFileDefines, InputDir) when is_map(InputFileDefines) ->
+    maps:fold(
+        fun(InputFile, _Opts, Acc) ->
+            [filename:join(InputDir, InputFile) | Acc]
+        end, [], InputFileDefines);
 get_input_files_from_defines(InputFileDefines, _InputDir) ->
     error({error_input_file_defines, InputFileDefines}).
 
