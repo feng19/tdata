@@ -60,7 +60,7 @@ set_key(Key, Value) ->
 get_key(Key) ->
     application:get_env(?MODULE, Key, undefined).
 
--spec transform_all(global_config(), transform_fun_config()) -> output_files().
+-spec transform_all(global_config(), transform_fun_config()) -> [output_files()].
 transform_all(Config, TransformConfig) ->
     [transform_files(HandleModule, Config, TransformConfig) ||
         HandleModule <- tdata_loader:all_attr_modules(behavior, [?MODULE])].

@@ -67,7 +67,7 @@ init_excel_loader() ->
         end,
     ErlPortPath = tdata:get_key(erl_port_path),
     init_excel_loader(ErlPortPath, PythonPath).
--spec init_excel_loader(file:filename(), file:filename()) -> {ok, pid()} | {error, Reason :: term()}.
+-spec init_excel_loader(file:filename(), file:filename()) -> ok.
 init_excel_loader(ErlPortPath, PythonPath) ->
     {ok, PythonPid} = python:start([{cd, ErlPortPath}, {python_path, PythonPath}]),
     ExcelLoader =
