@@ -12,6 +12,15 @@
     transform_file/3
 ]).
 
+-export_type([
+    transform_define/0,
+    transform_defines/0,
+    global_config/0,
+    transform_fun_config/0,
+    output_result/0,
+    output_results/0
+]).
+
 -type input_file() :: file:filename().
 -type output_file() :: file:filename().
 -type input_file_define() :: {input_file(), tdata_excel_loader:load_sheets_opts()}.
@@ -32,10 +41,10 @@
 -type transform_fun_config() :: any().
 -type output_error_status() :: any().
 -type output_status() :: ok | skipped | output_error_status().
--type output() :: {output_file(), output_status()}.
--type output_files() :: [output()].
+-type output_result() :: {output_file(), output_status()}.
+-type output_results() :: [output_result()].
 
--callback transform_defines() -> [transform_define()].
+-callback transform_defines() -> transform_defines().
 
 %%====================================================================
 %% API functions
@@ -60,13 +69,13 @@ set_key(Key, Value) ->
 get_key(Key) ->
     application:get_env(?MODULE, Key, undefined).
 
--spec transform_all(global_config(), transform_fun_config()) -> [output_files()].
+-spec transform_all(global_config(), transform_fun_config()) -> [output_results()].
 transform_all(Config, TransformConfig) ->
     [transform_files(HandleModule, Config, TransformConfig) ||
         HandleModule <- tdata_loader:all_attr_modules(behavior, [?MODULE])].
 
 -spec transform_files(HandleModule :: module() | transform_define() | transform_defines(),
-    global_config(), transform_fun_config()) -> output_files().
+    global_config(), transform_fun_config()) -> output_results().
 transform_files(HandleModule, Config, TransformConfig) when is_atom(HandleModule) ->
     TransformDefines = HandleModule:transform_defines(),
     transform_files(TransformDefines, Config, TransformConfig);
@@ -76,7 +85,7 @@ transform_files(TransformDefines, Config, TransformConfig) when is_list(Transfor
 transform_files(TransformDefine, Config, TransformConfig) when is_map(TransformDefine) ->
     transform_file(TransformDefine, Config, TransformConfig).
 
--spec transform_file(transform_define(), global_config(), transform_fun_config()) -> output().
+-spec transform_file(transform_define(), global_config(), transform_fun_config()) -> output_result().
 transform_file(TransformDefine, Config, TransformConfig) ->
     case check_transform_define(TransformDefine) of
         ok ->
