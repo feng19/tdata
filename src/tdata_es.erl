@@ -103,8 +103,8 @@ extract_python2(PythonDir) ->
     end.
 
 all_attr_modules() ->
-    App = application:get_env(tdata, app),
-    lists:usort(tdata_loader:all_attr_modules(App) ++ tdata_loader:all_attr_modules(behavior, [tdata])).
+    {ok, App} = application:get_env(tdata, app),
+    lists:usort(tdata_loader:all_attr_modules_app(App, ds) ++ tdata_loader:all_attr_modules(behavior, [tdata])).
 
 do_recursive_dir(HandleModules, InputDirs, Config) ->
     IsForce = maps:get(force, Config, false),

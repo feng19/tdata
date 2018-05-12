@@ -8,7 +8,7 @@
     get_loader/0, get_loader/1,
     del_loader/0, del_loader/1,
     load_input_files/3,
-    all_attr_modules/1,
+    all_attr_modules_app/2,
     all_attr_modules/2
 ]).
 
@@ -70,7 +70,7 @@ load_input_files(InputFileDefines, InputDir, Acc) when is_map(InputFileDefines) 
     load_input_files(maps:to_list(InputFileDefines), InputDir, Acc);
 load_input_files([], _InputDir, Acc) -> Acc.
 
-all_attr_modules(App) ->
+all_attr_modules_app(App, Type) ->
     Targets =
         lists:usort(
             lists:append(
@@ -78,7 +78,7 @@ all_attr_modules(App) ->
                     {ok, Modules} <- [application:get_key(App, modules)]])),
     lists:filter(
         fun(Module) ->
-            lists:any(fun({tdata, _}) -> true;(_) -> false end, Module:module_info(attributes))
+            lists:member({tdata, [Type]}, Module:module_info(attributes))
         end, Targets).
 
 all_attr_modules(Attr, Value) ->
@@ -98,8 +98,8 @@ all_attr_modules(Attr, Value) ->
 %%====================================================================
 
 all_attr_modules() ->
-    App = application:get_env(tdata, app),
-    lists:usort(all_attr_modules(App) ++ all_attr_modules(behavior, [?MODULE])).
+    {ok, App} = application:get_env(tdata, app),
+    lists:usort(all_attr_modules_app(App, loader) ++ all_attr_modules(behavior, [?MODULE])).
 
 load_input_file(InputFile0, Opts, InputDir) ->
     InputFile = filename:join(InputDir, InputFile0),
