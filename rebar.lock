@@ -1,10 +1,12 @@
 {"1.1.0",
 [{<<"bbmustache">>,{pkg,<<"bbmustache">>,<<"1.4.0">>},0},
  {<<"erlport">>,{pkg,<<"erlport">>,<<"0.9.8">>},0},
- {<<"erlydtl">>,{pkg,<<"erlydtl">>,<<"0.12.1">>},0}]}.
+ {<<"erlydtl">>,{pkg,<<"erlydtl">>,<<"0.12.1">>},0},
+ {<<"getopt">>,{pkg,<<"getopt">>,<<"1.0.1">>},0}]}.
 [
 {pkg_hash,[
  {<<"bbmustache">>, <<"CC45A071DD2B3DF3A3E5F28548C8167E669A1F53437A2A2FD3B378CD38A6E725">>},
  {<<"erlport">>, <<"B7DC57EB87F215A671926BFBCD23E6E9C76F8653B0D072627B41431EF51C4D20">>},
- {<<"erlydtl">>, <<"3FDE3190D30340B10CFCFDB4135A828761D468DB4E4B34817C6B91D295F3142D">>}]}
+ {<<"erlydtl">>, <<"3FDE3190D30340B10CFCFDB4135A828761D468DB4E4B34817C6B91D295F3142D">>},
+ {<<"getopt">>, <<"C73A9FA687B217F2FF79F68A3B637711BB1936E712B521D8CE466B29CBF7808A">>}]}
 ].

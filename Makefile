@@ -3,11 +3,15 @@ all: compile test
 ###===================================================================
 ### build
 ###===================================================================
-.PHONY: co compile run
+.PHONY: co compile es escriptize run
 
 co:compile
 compile:
 	rebar3 compile
+
+es:escriptize
+escriptize: clean
+	rebar3 escriptize
 
 ### clean
 .PHONY: clean distclean

@@ -8,6 +8,7 @@
     get_loader/0, get_loader/1,
     del_loader/0, del_loader/1,
     load_input_files/3,
+    all_attr_modules/1,
     all_attr_modules/2
 ]).
 
@@ -20,11 +21,11 @@
 
 start() ->
     ensure_ets(),
-    [Module:start() || Module <- all_attr_modules(behavior, [?MODULE])],
+    [Module:start() || Module <- all_attr_modules()],
     ok.
 
 stop() ->
-    [Module:stop() || Module <- all_attr_modules(behavior, [?MODULE])],
+    [Module:stop() || Module <- all_attr_modules()],
     ets:delete(?MODULE),
     ok.
 
@@ -69,6 +70,17 @@ load_input_files(InputFileDefines, InputDir, Acc) when is_map(InputFileDefines) 
     load_input_files(maps:to_list(InputFileDefines), InputDir, Acc);
 load_input_files([], _InputDir, Acc) -> Acc.
 
+all_attr_modules(App) ->
+    Targets =
+        lists:usort(
+            lists:append(
+                [[Module || Module <- Modules] ||
+                    {ok, Modules} <- [application:get_key(App, modules)]])),
+    lists:filter(
+        fun(Module) ->
+            lists:any(fun({tdata, _}) -> true;(_) -> false end, Module:module_info(attributes))
+        end, Targets).
+
 all_attr_modules(Attr, Value) ->
     Targets =
         lists:usort(
@@ -84,6 +96,10 @@ all_attr_modules(Attr, Value) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
+
+all_attr_modules() ->
+    App = application:get_env(tdata, app),
+    lists:usort(all_attr_modules(App) ++ all_attr_modules(behavior, [?MODULE])).
 
 load_input_file(InputFile0, Opts, InputDir) ->
     InputFile = filename:join(InputDir, InputFile0),

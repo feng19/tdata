@@ -2,6 +2,7 @@
 
 %% API exports
 -export([
+    main/1,
     start/0,
     start/2,
     stop/0,
@@ -52,6 +53,9 @@
 %%====================================================================
 %% API functions
 %%====================================================================
+
+main(Args) ->
+    tdata_es:main(Args).
 
 start() ->
     application:ensure_all_started(?MODULE).

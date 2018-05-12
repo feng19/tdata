@@ -18,3 +18,4 @@ rebar3.crashdump
 *.iml
 *.pyc
 .~*
+tdata
