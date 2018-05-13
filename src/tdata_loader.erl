@@ -9,7 +9,8 @@
     del_loader/0, del_loader/1,
     load_input_files/3,
     all_attr_modules_app/2,
-    all_attr_modules/2
+    all_attr_modules/2,
+    all_attr_modules_ebin/1
 ]).
 
 -callback start() -> ok.
@@ -70,6 +71,7 @@ load_input_files(InputFileDefines, InputDir, Acc) when is_map(InputFileDefines) 
     load_input_files(maps:to_list(InputFileDefines), InputDir, Acc);
 load_input_files([], _InputDir, Acc) -> Acc.
 
+all_attr_modules_app(undefined, _Type) -> [];
 all_attr_modules_app(App, Type) ->
     Targets =
         lists:usort(
@@ -93,13 +95,29 @@ all_attr_modules(Attr, Value) ->
             lists:member({Attr, Value}, Module:module_info(attributes))
         end, Targets).
 
+all_attr_modules_ebin(Type) ->
+    {ok, Cwd} = file:get_cwd(),
+    EbinDir = filename:join(Cwd, "ebin"),
+    case filelib:is_dir(EbinDir) of
+        true ->
+            Targets = [list_to_atom(filename:basename(File, ".beam")) ||
+                File <- filelib:wildcard(filename:join(EbinDir, "*.beam"))],
+            lists:filter(
+                fun(Module) ->
+                    lists:member({tdata, [Type]}, Module:module_info(attributes))
+                end, Targets);
+        false -> []
+    end.
+
 %%====================================================================
 %% Internal functions
 %%====================================================================
 
 all_attr_modules() ->
-    {ok, App} = application:get_env(tdata, app),
-    lists:usort(all_attr_modules_app(App, loader) ++ all_attr_modules(behavior, [?MODULE])).
+    App = application:get_env(tdata, app, undefined),
+    lists:usort(all_attr_modules_app(App, loader) ++
+        all_attr_modules_ebin(loader) ++
+        all_attr_modules(behavior, [?MODULE])).
 
 load_input_file(InputFile0, Opts, InputDir) ->
     InputFile = filename:join(InputDir, InputFile0),
