@@ -7,7 +7,7 @@
     set_loader/1, set_loader/2,
     get_loader/0, get_loader/1,
     del_loader/0, del_loader/1,
-    load_input_files/3,
+    load_input_files/2, load_input_files/3,
     all_attr_modules_app/2,
     all_attr_modules/2
 ]).
@@ -54,6 +54,10 @@ del_loader() ->
 del_loader(Ext) ->
     ets:delete(?MODULE, Ext).
 
+-spec load_input_files(tdata:input_file_define(), InputDir :: file:filename()) ->
+    [{InputFile :: file:filename(), OutputData :: any()}].
+load_input_files(InputFileDefine, InputDir) ->
+    load_input_files(InputFileDefine, InputDir, []).
 load_input_files({InputFile, Opts}, InputDir, Acc) ->
     Res = load_input_file(InputFile, Opts, InputDir),
     [Res | Acc];
@@ -101,6 +105,8 @@ all_attr_modules() ->
     {ok, App} = application:get_env(tdata, app),
     lists:usort(all_attr_modules_app(App, loader) ++ all_attr_modules(behavior, [?MODULE])).
 
+-spec load_input_file(InputFile :: file:filename(), Opts :: any(), InputDir :: file:filename()) ->
+    {InputFile :: file:filename(), OutputData :: any()}.
 load_input_file(InputFile0, Opts, InputDir) ->
     InputFile = filename:join(InputDir, InputFile0),
     Ext = filename:extension(InputFile),

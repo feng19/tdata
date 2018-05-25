@@ -119,9 +119,17 @@ transform_file(TransformDefine, Config, TransformConfig) ->
 
 transform_file_do(InputFileDefines, OutputFile0, OutputFile, TransformDefine,
     InputDir, TplType, TplFile, TransformConfig) ->
-    InputDataList = tdata_loader:load_input_files(InputFileDefines, InputDir, []),
+    InputDataList = tdata_loader:load_input_files(InputFileDefines, InputDir),
     #{transform_fun := TransformFun} = TransformDefine,
-    Data = TransformFun(OutputFile0, InputDataList, TransformConfig),
+    Data =
+        case erlang:fun_info(TransformFun, arity) of
+            {arity, 1} ->
+                TransformFun(InputDataList);
+            {arity, 2} ->
+                TransformFun(OutputFile0, InputDataList);
+            {arity, 3} ->
+                TransformFun(OutputFile0, InputDataList, TransformConfig)
+        end,
     SourceFiles = unicode:characters_to_binary(string:join([InputFile || {InputFile, _} <- InputDataList], ",")),
     HeaderComments = <<"%% Automatically generated, do not edit\n%% Source Files: ", SourceFiles/binary, "\n">>,
 

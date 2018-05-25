@@ -39,11 +39,11 @@ main(Args) ->
                 true ->
                     getopt:usage(OptSpecList, ?PROGRAM_NAME);
                 _ ->
-%%                    io:format("Options:~p, LastString:~p~n", [Options, LastString]),
+%%                    cf:print("Options:~p, LastString:~p~n", [Options, LastString]),
                     do(Options)
             end;
         {error, {Reason, Data}} ->
-            io:format("~p : ~p~n", [Reason, Data]),
+            cf:print("~!r~p : ~p~n", [Reason, Data]),
             getopt:usage(OptSpecList, ?PROGRAM_NAME)
     end.
 
@@ -93,7 +93,6 @@ extract_python2(PythonDir) ->
                     hd(filename:split(FileName)) == PythonDir
                 end}]);
         false ->
-            io:format("~p~n", [?LINE]),
             skip
     end,
     case filelib:is_dir(PythonDir) of
@@ -113,21 +112,28 @@ do_recursive_dir(HandleModules, InputDirs, Config) ->
 transform(InputDir, HandleModules, Config, IsForce) ->
     case filelib:is_dir(InputDir) of
         true ->
-            io:format("[input_dir:~ts] transforming...~n", [InputDir]),
+            cf:print("~!g[input_dir:~ts] transforming...~n", [InputDir]),
             OutputDir = filename:join([maps:get(output_dir, Config), filename:basename(InputDir)]),
             cleanup_dir(OutputDir, IsForce),
             ensure_dir(OutputDir),
             NewConfig = Config#{input_dir => InputDir, output_dir => OutputDir},
             loop_transform(HandleModules, NewConfig),
-            io:format("[input_dir:~ts] done~n", [InputDir]);
+            cf:print("~!g[input_dir:~ts] done~n", [InputDir]);
         false ->
-            io:format("[input_dir:~ts] shouldn't exist~n", [InputDir])
+            cf:print("~!r[input_dir:~ts] shouldn't exist~n", [InputDir])
     end.
 
 loop_transform([HandleModule | HandleModules], Config) ->
-    io:format("  [~p] transforming...~n", [HandleModule]),
+    cf:print("~!g  [~p] transforming...~n", [HandleModule]),
     ResList = tdata:transform_files(HandleModule, Config, Config),
-    [io:format("  ==> ~ts:~p~n", [OutputFile, Res]) || {OutputFile, Res} <- ResList],
+    [begin
+         case Res of
+             ok -> cf:print("~!g  ==> ~ts : ~p~n", [OutputFile, Res]);
+             skipped -> cf:print("~!m  ==> ~ts : ~p~n", [OutputFile, Res]);
+             _ ->
+                 cf:print("~!r  ==> ~ts : ~p~n", [OutputFile, Res])
+         end
+     end|| {OutputFile, Res} <- ResList],
     loop_transform(HandleModules, Config);
 loop_transform([], _Config) -> ok.
 
