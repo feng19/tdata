@@ -48,7 +48,7 @@ stop() ->
     ok.
 
 set_python_dir() ->
-    PythonPath = filename:join(code:priv_dir(tdata), "python/"),
+    PythonPath = filename:join(code:priv_dir(tdata), "python2/"),
     ErlPortPath = filename:join(code:priv_dir(erlport), "python2/"),
     set_python_dir(PythonPath, ErlPortPath).
 set_python_dir(PythonPath, ErlPortPath) ->

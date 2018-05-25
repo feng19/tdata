@@ -58,19 +58,27 @@ do(Config0) ->
     PythonDir = "python2",
     extract_python2(PythonDir),
     tdata_excel_loader:set_python_dir(PythonDir, PythonDir),
-    App =
-        case maps:get(app, Config, undefined) of
-            undefined ->
-                case filelib:wildcard("src/*.app.src") of
-                    [AppT] -> list_to_atom(filename:basename(AppT, ".app.src"));
-                    _ -> error(cannot_find_app)
-                end;
-            AppT -> AppT
-        end,
-    {ok, _} = application:ensure_all_started(App),
-    application:set_env(tdata, app, App),
-    tdata:start(),
+    case maps:get(app, Config, undefined) of
+        undefined ->
+            case filelib:wildcard("src/*.app.src") of
+                [AppT] ->
+                    App = list_to_atom(filename:basename(AppT, ".app.src")),
+                    {ok, _} = application:ensure_all_started(App),
+                    application:set_env(tdata, app, App);
+                _ ->
+                    case filelib:is_dir(filename:join(Cwd, "ebin"))
+                        andalso filelib:wildcard("ebin/*.beam") =/= [] of
+                        true -> ok;
+                        false ->
+                            error(cannot_find_app)
+                    end
+            end;
+        App ->
+            {ok, _} = application:ensure_all_started(App),
+            application:set_env(tdata, app, App)
+    end,
     HandleModules = all_attr_modules(),
+    tdata:start(),
     case maps:get(recursive, Config, false) of
         false ->
             IsForce = maps:get(force, Config, false),
@@ -102,8 +110,10 @@ extract_python2(PythonDir) ->
     end.
 
 all_attr_modules() ->
-    {ok, App} = application:get_env(tdata, app),
-    lists:usort(tdata_loader:all_attr_modules_app(App, ds) ++ tdata_loader:all_attr_modules(behavior, [tdata])).
+    App = application:get_env(tdata, app, undefined),
+    lists:usort(tdata_loader:all_attr_modules_app(App, ds) ++
+        tdata_loader:all_attr_modules_ebin(ds) ++
+        tdata_loader:all_attr_modules(behavior, [tdata])).
 
 do_recursive_dir(HandleModules, InputDirs, Config) ->
     IsForce = maps:get(force, Config, false),
