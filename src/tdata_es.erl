@@ -29,18 +29,25 @@ main(Args) ->
         {force, $f, "force", {boolean, false}, "force gen all output: true or false."},
         {child_dir, $c, "child_dir", string,
             "if recursive set to false, must set this arguments: '-c child_dir1 -c child_dir2 ...'"},
-        {help, $h, "help", undefined, "print help."}
+        {help, $h, "help", undefined, "print help."},
+        {version, $v, "version", undefined, "print version."}
     ],
     case getopt:parse(OptSpecList, Args) of
         {ok, {_Options, ["help"]}} ->
             getopt:usage(OptSpecList, ?PROGRAM_NAME);
+        {ok, {_Options, ["version"]}} ->
+            print_version();
         {ok, {Options, _LastString}} ->
             case proplists:is_defined(help, Options) of
                 true ->
                     getopt:usage(OptSpecList, ?PROGRAM_NAME);
                 _ ->
-%%                    cf:print("Options:~p, LastString:~p~n", [Options, LastString]),
-                    do(Options)
+                    case proplists:is_defined(version, Options) of
+                        true ->
+                            print_version();
+                        _ ->
+                            do(Options)
+                    end
             end;
         {error, {Reason, Data}} ->
             cf:print("~!r~p : ~p~n", [Reason, Data]),
@@ -143,7 +150,7 @@ loop_transform([HandleModule | HandleModules], Config) ->
              _ ->
                  cf:print("~!r  ==> ~ts : ~p~n", [OutputFile, Res])
          end
-     end|| {OutputFile, Res} <- ResList],
+     end || {OutputFile, Res} <- ResList],
     loop_transform(HandleModules, Config);
 loop_transform([], _Config) -> ok.
 
@@ -204,3 +211,8 @@ add_paths(Cwd) ->
         filelib:wildcard("_build/default/lib/*/ebin")], filelib:is_dir(Dir)
     ]),
     ok.
+
+print_version() ->
+    application:load(tdata),
+    {ok, V} = application:get_key(tdata, vsn),
+    cf:print("version:~ts~n", [V]).

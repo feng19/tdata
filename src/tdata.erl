@@ -49,7 +49,8 @@
 -type output_results() :: [output_result()].
 
 -callback transform_defines() -> transform_defines().
-
+-callback transform_defines(transform_fun_config()) -> transform_defines().
+-optional_callbacks([transform_defines/0, transform_defines/1]).
 %%====================================================================
 %% API functions
 %%====================================================================
@@ -84,7 +85,13 @@ transform_all(Config, TransformConfig) ->
 -spec transform_files(HandleModule :: module() | transform_define() | transform_defines(),
     global_config(), transform_fun_config()) -> output_results().
 transform_files(HandleModule, Config, TransformConfig) when is_atom(HandleModule) ->
-    TransformDefines = HandleModule:transform_defines(),
+    TransformDefines =
+        case erlang:function_exported(HandleModule, transform_defines, 1) of
+            true ->
+                HandleModule:transform_defines(TransformConfig);
+            false ->
+                HandleModule:transform_defines()
+        end,
     transform_files(TransformDefines, Config, TransformConfig);
 transform_files(TransformDefines, Config, TransformConfig) when is_list(TransformDefines) ->
     [transform_file(TransformDefine, Config, TransformConfig)
