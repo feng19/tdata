@@ -18,23 +18,21 @@
     transform_defines/0,
     global_config/0,
     transform_fun_config/0,
-    output_result/0,
     output_results/0
 ]).
 
 -type input_file() :: file:filename().
 -type output_file() :: file:filename().
 -type input_file_opts() :: any().
--type input_file_define() ::
-    {input_file(), input_file_opts()} |
-    #{file := input_file(), opts := input_file_opts()}.
+-type input_file_define() :: #{file := input_file(), opts := input_file_opts()}.
 -type transform_define() :: #{
-    input_file_defines := input_file_define() | [input_file_define()] | map(),
-    output_file := output_file(),
+    input_file_defines := input_file_define() | [input_file_define()],
+    output_file := output_file() | dynamic,
     transform_fun := function(),
     tpl_type => tdata_render:tpl_type(),
     tpl_file => file:filename()
 }.
+
 -type transform_defines() :: [transform_define()].
 
 -type global_config() :: #{
@@ -78,44 +76,39 @@ get_key(Key) ->
     application:get_env(?MODULE, Key, undefined).
 
 -spec transform_all(global_config(), transform_fun_config()) -> [output_results()].
-transform_all(Config, TransformConfig) ->
-    [transform_files(HandleModule, Config, TransformConfig) ||
-        HandleModule <- tdata_loader:all_attr_modules(behavior, [?MODULE])].
+transform_all(GlobalConfig, TransformConfig) ->
+    [transform_files(DefineModule, GlobalConfig, TransformConfig) ||
+        DefineModule <- tdata_loader:all_attr_modules(behavior, [?MODULE])].
 
--spec transform_files(HandleModule :: module() | transform_define() | transform_defines(),
+-spec transform_files(DefineModule :: module() | transform_define() | transform_defines(),
     global_config(), transform_fun_config()) -> output_results().
-transform_files(HandleModule, Config, TransformConfig) when is_atom(HandleModule) ->
+transform_files(DefineModule, GlobalConfig, TransformConfig) when is_atom(DefineModule) ->
     TransformDefines =
-        case erlang:function_exported(HandleModule, transform_defines, 1) of
+        case erlang:function_exported(DefineModule, transform_defines, 1) of
             true ->
-                HandleModule:transform_defines(TransformConfig);
+                DefineModule:transform_defines(TransformConfig);
             false ->
-                HandleModule:transform_defines()
+                DefineModule:transform_defines()
         end,
-    transform_files(TransformDefines, Config, TransformConfig);
-transform_files(TransformDefines, Config, TransformConfig) when is_list(TransformDefines) ->
-    [transform_file(TransformDefine, Config, TransformConfig)
-        || TransformDefine <- TransformDefines];
-transform_files(TransformDefine, Config, TransformConfig) when is_map(TransformDefine) ->
-    transform_file(TransformDefine, Config, TransformConfig).
+    transform_files(TransformDefines, GlobalConfig, TransformConfig);
+transform_files(TransformDefines, GlobalConfig, TransformConfig) when is_list(TransformDefines) ->
+    lists:flatten([transform_file(TransformDefine, GlobalConfig, TransformConfig)
+        || TransformDefine <- TransformDefines]);
+transform_files(TransformDefine, GlobalConfig, TransformConfig) when is_map(TransformDefine) ->
+    transform_file(TransformDefine, GlobalConfig, TransformConfig).
 
--spec transform_file(transform_define(), global_config(), transform_fun_config()) -> output_result().
-transform_file(TransformDefine, Config, TransformConfig) ->
+-spec transform_file(transform_define(), global_config(), transform_fun_config()) -> output_result() | output_results().
+transform_file(TransformDefine, GlobalConfig, TransformConfig) ->
     case check_transform_define(TransformDefine) of
         ok ->
-            #{input_file_defines := InputFileDefines, output_file := OutputFile0} = TransformDefine,
-            #{input_dir := InputDir, output_dir := OutputDir} = Config,
-
+            #{input_file_defines := InputFileDefines} = TransformDefine,
+            #{input_dir := InputDir} = GlobalConfig,
             InputFiles = get_input_files_from_defines(InputFileDefines, InputDir),
-            OutputFile = filename:join(OutputDir, OutputFile0),
-            ok = filelib:ensure_dir(OutputFile),
-            {TplType, TplFile} = get_tpl_info(TransformDefine, Config),
-            case is_all_file(InputFiles) andalso is_need_transform(InputFiles, OutputFile, TplFile) of
+            case is_all_file(InputFiles) of
                 true ->
-                    transform_file_do(InputFileDefines, OutputFile0, OutputFile, TransformDefine,
-                        InputDir, TplType, TplFile, TransformConfig);
-                false ->
-                    {OutputFile0, skipped}
+                    transform_file_1(InputFiles, TransformDefine, GlobalConfig, TransformConfig);
+                _ ->
+                    {"not all file", InputFiles}
             end;
         Result -> Result
     end.
@@ -124,10 +117,72 @@ transform_file(TransformDefine, Config, TransformConfig) ->
 %% Internal functions
 %%====================================================================
 
-transform_file_do(InputFileDefines, OutputFile0, OutputFile, TransformDefine,
-    InputDir, TplType, TplFile, TransformConfig) ->
+transform_file_1(InputFiles, #{input_file_defines := InputFileDefines, output_file := OutputFile0,
+    transform_fun := TransformFun} = TransformDefine,
+    #{input_dir := InputDir, output_dir := OutputDir} = GlobalConfig, TransformConfig) ->
+    case OutputFile0 of
+        dynamic ->
+            {InputDataList, OutputList} = transform_file_do(InputFileDefines, OutputFile0,
+                TransformFun, InputDir, TransformConfig),
+            HeaderComments = mk_header_comments(InputDataList),
+            LastMaxInputTime = max_last_modified(InputFiles),
+            {TplType, TplFile} = get_tpl_info(TransformDefine, GlobalConfig),
+            case OutputList of
+                _ when is_list(OutputList) ->
+                    [transform_file_render_list(Output, OutputDir, LastMaxInputTime, TplType, TplFile, HeaderComments)
+                        || Output <- OutputList];
+                Output ->
+                    transform_file_render_list(Output, OutputDir, LastMaxInputTime, TplType, TplFile, HeaderComments)
+            end;
+        _ ->
+            OutputFile = filename:join(OutputDir, OutputFile0),
+            ok = filelib:ensure_dir(OutputFile),
+            {TplType, TplFile} = get_tpl_info(TransformDefine, GlobalConfig),
+            case is_need_transform(InputFiles, OutputFile, TplFile) of
+                true ->
+                    {InputDataList, Data} = transform_file_do(InputFileDefines, OutputFile0,
+                        TransformFun, InputDir, TransformConfig),
+                    HeaderComments = mk_header_comments(InputDataList),
+                    transform_file_render_do(Data, TplType, TplFile, OutputFile0, OutputFile, HeaderComments);
+                false ->
+                    {OutputFile0, skipped}
+            end
+    end.
+
+transform_file_render_list(Output, OutputDir, LastMaxInputTime, TplType, TplFile, HeaderComments) ->
+    case Output of
+        {ok, OutputFile1, RenderData} ->
+            transform_file_render({ok, RenderData},
+                OutputDir, OutputFile1, LastMaxInputTime, TplType, TplFile, HeaderComments);
+        {ok, OutputFile1, RenderData, RenderOptions} ->
+            transform_file_render({ok, RenderData, RenderOptions},
+                OutputDir, OutputFile1, LastMaxInputTime, TplType, TplFile, HeaderComments);
+        Err ->
+            {"dynamic", Err}
+    end.
+
+transform_file_render(Data, OutputDir, OutputFile0, LastMaxInputTime, TplType, TplFile, HeaderComments) ->
+    OutputFile = filename:join(OutputDir, OutputFile0),
+    case is_need_transform(LastMaxInputTime, OutputFile, TplFile) of
+        true ->
+            transform_file_render_do(Data,
+                TplType, TplFile, OutputFile0, OutputFile, HeaderComments);
+        false ->
+            {OutputFile0, skipped}
+    end.
+
+transform_file_render_do(Data, TplType, TplFile, OutputFile0, OutputFile, HeaderComments) ->
+    case tdata_render:render(Data, TplType, TplFile, OutputFile, HeaderComments) of
+        ok -> {OutputFile0, ok};
+        Err -> {OutputFile0, Err}
+    end.
+
+mk_header_comments(InputDataList) ->
+    SourceFiles = unicode:characters_to_binary(string:join([InputFile || {InputFile, _} <- InputDataList], ",")),
+    <<"%% Automatically generated, do not edit\n%% Source Files: ", SourceFiles/binary, "\n">>.
+
+transform_file_do(InputFileDefines, OutputFile0, TransformFun, InputDir, TransformConfig) ->
     InputDataList = tdata_loader:load_input_files(InputFileDefines, InputDir),
-    #{transform_fun := TransformFun} = TransformDefine,
     Data =
         case erlang:fun_info(TransformFun, arity) of
             {arity, 1} ->
@@ -137,13 +192,7 @@ transform_file_do(InputFileDefines, OutputFile0, OutputFile, TransformDefine,
             {arity, 3} ->
                 TransformFun(OutputFile0, InputDataList, TransformConfig)
         end,
-    SourceFiles = unicode:characters_to_binary(string:join([InputFile || {InputFile, _} <- InputDataList], ",")),
-    HeaderComments = <<"%% Automatically generated, do not edit\n%% Source Files: ", SourceFiles/binary, "\n">>,
-
-    case tdata_render:render(Data, TplType, TplFile, OutputFile, HeaderComments) of
-        ok -> {OutputFile0, ok};
-        Err -> {OutputFile0, Err}
-    end.
+    {InputDataList, Data}.
 
 check_transform_define(#{output_file := OutputFile0} = TransformDefine) ->
     case maps:get(input_file_defines, TransformDefine, miss) of
@@ -157,30 +206,28 @@ check_transform_define(#{output_file := OutputFile0} = TransformDefine) ->
                     ok
             end
     end;
+check_transform_define(#{file_defines := _FileDefines} = _TransformDefine) ->
+    ok;
 check_transform_define(_TransformDefine) ->
     error(miss_output_file).
 
 get_input_files_from_defines(#{file := InputFile}, InputDir) ->
     [filename:join(InputDir, InputFile)];
-get_input_files_from_defines({InputFile, _}, InputDir) ->
-    [filename:join(InputDir, InputFile)];
 get_input_files_from_defines(InputFileDefines, InputDir) when is_list(InputFileDefines) ->
-    [get_input_files_from_defines(InputFileDefine, InputDir) || InputFileDefine <- InputFileDefines];
-get_input_files_from_defines(InputFileDefines, InputDir) when is_map(InputFileDefines) ->
-    maps:fold(
-        fun(InputFile, _Opts, Acc) ->
-            [filename:join(InputDir, InputFile) | Acc]
+    lists:foldl(
+        fun(InputFileDefine, Acc) ->
+            get_input_files_from_defines(InputFileDefine, InputDir) ++ Acc
         end, [], InputFileDefines);
 get_input_files_from_defines(InputFileDefines, _InputDir) ->
     error({error_input_file_defines, InputFileDefines}).
 
-get_tpl_info(TransformDefine, Config) ->
+get_tpl_info(TransformDefine, GlobalConfig) ->
     case maps:get(tpl_file, TransformDefine, miss) of
         miss ->
             {undefined, undefined};
         TplFile0 ->
             TplType0 = get_tpl_type(TplFile0, TransformDefine),
-            TplDir = get_tpl_dir(TransformDefine, Config),
+            TplDir = get_tpl_dir(TransformDefine, GlobalConfig),
             {TplType0, filename:join(TplDir, TplFile0)}
     end.
 
@@ -206,8 +253,10 @@ is_all_file([]) -> true;
 is_all_file([InputFile | InputFiles]) ->
     filelib:is_file(InputFile) andalso not filelib:is_dir(InputFile) andalso is_all_file(InputFiles).
 
-is_need_transform(InputFiles, OutputFile, TplFile0) ->
-    Input = lists:max([filelib:last_modified(InputFile) || InputFile <- InputFiles]),
+is_need_transform(InputFiles, OutputFile, TplFile0) when is_list(InputFiles) ->
+    Input = max_last_modified(InputFiles),
+    is_need_transform(Input, OutputFile, TplFile0);
+is_need_transform(Input, OutputFile, TplFile0) ->
     Output = filelib:last_modified(OutputFile),
     case TplFile0 of
         undefined ->
@@ -216,3 +265,6 @@ is_need_transform(InputFiles, OutputFile, TplFile0) ->
             Tpl = filelib:last_modified(TplFile),
             Input > Output orelse Tpl > Output
     end.
+
+max_last_modified(Files) ->
+    lists:max([filelib:last_modified(File) || File <- Files]).

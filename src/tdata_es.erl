@@ -84,16 +84,16 @@ do(Config0) ->
             {ok, _} = application:ensure_all_started(App),
             application:set_env(tdata, app, App)
     end,
-    HandleModules = all_attr_modules(),
+    DefineModules = all_define_modules(),
     tdata:start(),
     case maps:get(recursive, Config, false) of
         false ->
             IsForce = maps:get(force, Config, false),
             OutputDir = maps:get(output_dir, Config),
             cleanup_dir(OutputDir, IsForce),
-            loop_transform(HandleModules, Config);
+            loop_transform(DefineModules, Config);
         InputDirs ->
-            do_recursive_dir(HandleModules, InputDirs, Config)
+            do_recursive_dir(DefineModules, InputDirs, Config)
     end,
     tdata:stop().
 
@@ -116,17 +116,17 @@ extract_python2(PythonDir) ->
             error({miss_python_dir, PythonDir})
     end.
 
-all_attr_modules() ->
+all_define_modules() ->
     App = application:get_env(tdata, app, undefined),
     lists:usort(tdata_loader:all_attr_modules_app(App, ds) ++
         tdata_loader:all_attr_modules_ebin(ds) ++
         tdata_loader:all_attr_modules(behavior, [tdata])).
 
-do_recursive_dir(HandleModules, InputDirs, Config) ->
+do_recursive_dir(DefineModules, InputDirs, Config) ->
     IsForce = maps:get(force, Config, false),
-    [transform(InputDir, HandleModules, Config, IsForce) || InputDir <- InputDirs].
+    [transform(InputDir, DefineModules, Config, IsForce) || InputDir <- InputDirs].
 
-transform(InputDir, HandleModules, Config, IsForce) ->
+transform(InputDir, DefineModules, Config, IsForce) ->
     case filelib:is_dir(InputDir) of
         true ->
             cf:print("~!g[input_dir:~ts] transforming...~n", [InputDir]),
@@ -134,24 +134,26 @@ transform(InputDir, HandleModules, Config, IsForce) ->
             cleanup_dir(OutputDir, IsForce),
             ensure_dir(OutputDir),
             NewConfig = Config#{input_dir => InputDir, output_dir => OutputDir},
-            loop_transform(HandleModules, NewConfig),
+            loop_transform(DefineModules, NewConfig),
             cf:print("~!g[input_dir:~ts] done~n", [InputDir]);
         false ->
             cf:print("~!r[input_dir:~ts] shouldn't exist~n", [InputDir])
     end.
 
-loop_transform([HandleModule | HandleModules], Config) ->
-    cf:print("~!g  [~p] transforming...~n", [HandleModule]),
-    ResList = tdata:transform_files(HandleModule, Config, Config),
+loop_transform([DefineModule | DefineModules], Config) ->
+    cf:print("~!g  [~p] transforming...~n", [DefineModule]),
+    ResList = tdata:transform_files(DefineModule, Config, Config),
     [begin
          case Res of
-             ok -> cf:print("~!g  ==> ~ts : ~p~n", [OutputFile, Res]);
-             skipped -> cf:print("~!m  ==> ~ts : ~p~n", [OutputFile, Res]);
+             ok ->
+                 cf:print("~!g  ==> ~ts : ~p~n", [OutputFile, Res]);
+             skipped ->
+                 cf:print("~!m  ==> ~ts : ~p~n", [OutputFile, Res]);
              _ ->
                  cf:print("~!r  ==> ~ts : ~p~n", [OutputFile, Res])
          end
      end || {OutputFile, Res} <- ResList],
-    loop_transform(HandleModules, Config);
+    loop_transform(DefineModules, Config);
 loop_transform([], _Config) -> ok.
 
 handle_config([{input_dir, InputDir} | Config], Cwd, Acc) ->

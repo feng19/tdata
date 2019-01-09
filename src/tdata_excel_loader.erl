@@ -118,7 +118,12 @@ loop_all_sheet_name(LoadSheetsOpts, Sheets) when is_map(LoadSheetsOpts) ->
 loop_all_sheet_name_do([{SheetName, LoadSheetOpts} | LoadSheetsOpts], Sheets, Data)
     when is_binary(SheetName) andalso is_map(LoadSheetOpts) ->
     case sheet_name(SheetName, Sheets, LoadSheetOpts) of
-        {ok, SheetData} ->
+        {ok, SheetData0} ->
+            SheetData =
+                case maps:get(only_rows, LoadSheetOpts, false) of
+                    true -> maps:get(rows, SheetData0);
+                    _ -> SheetData0
+                end,
             loop_all_sheet_name_do(LoadSheetsOpts, Sheets, Data#{SheetName => SheetData});
         Err -> Err
     end;

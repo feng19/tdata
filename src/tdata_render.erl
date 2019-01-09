@@ -12,7 +12,7 @@
 %% API functions
 %%====================================================================
 
--spec render({ok, any()} | tuple(), tpl_type(), TplFile :: file:filename(),
+-spec render({ok, any()} | tuple() | atom(), tpl_type(), TplFile :: file:filename(),
     OutputFile :: file:filename(), HeaderComments :: binary()) -> ok | tuple().
 render(skipped, _TplType, _TplFile, _OutputFile, _HeaderComments) -> skipped;
 render({ok, RenderData}, mustache, TplFile, OutputFile, HeaderComments) ->

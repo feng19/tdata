@@ -10,7 +10,8 @@ all() ->
         skip_n_comments,
         groups,
         same_groups,
-        checks
+        checks,
+        only_rows
     ].
 
 sheet_name(Config) ->
@@ -85,3 +86,22 @@ checks(Config) ->
     ok.
 
 double(Cell) -> Cell * 2.
+
+only_rows(Config) ->
+    ExcelFile = filename:join(?config(data_dir, Config), "checks.xlsx"),
+    LoadSheetsOpts = #{<<"Sheet1">> => #{
+        only_rows => true,
+        checks => [
+            {int, [check_integer]},
+            {double_int, [check_integer, tdata_util:cell_to_fun(fun double/1)]},
+            {str, [check_not_empty]}
+        ]
+    }},
+    {ok, Sheets} = tdata_excel_loader:load_sheets(ExcelFile, LoadSheetsOpts),
+    Rows = [
+        #{double_int => 2, int => 1, str => <<"abc1">>},
+        #{double_int => 4, int => 2, str => <<"abc2">>},
+        #{double_int => 6, int => 3, str => <<"abc3">>}
+    ],
+    #{<<"Sheet1">> := Rows} = Sheets,
+    ok.

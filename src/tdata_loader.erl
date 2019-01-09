@@ -56,23 +56,15 @@ del_loader(Ext) ->
     ets:delete(?MODULE, Ext).
 
 -spec load_input_files(tdata:input_file_define(), InputDir :: file:filename()) ->
-    [{InputFile :: file:filename(), OutputData :: any()}].
+    [{tdata:input_file(), OutputData :: any()}].
 load_input_files(InputFileDefine, InputDir) ->
     load_input_files(InputFileDefine, InputDir, []).
-load_input_files({InputFile, Opts}, InputDir, Acc) ->
-    Res = load_input_file(InputFile, Opts, InputDir),
-    [Res | Acc];
 load_input_files(#{file := InputFile, opts := Opts}, InputDir, Acc) ->
     Res = load_input_file(InputFile, Opts, InputDir),
     [Res | Acc];
-load_input_files([{InputFile, Opts} | InputFiles], InputDir, Acc) ->
-    Res = load_input_file(InputFile, Opts, InputDir),
-    load_input_files(InputFiles, InputDir, [Res | Acc]);
 load_input_files([#{file := InputFile, opts := Opts} | InputFiles], InputDir, Acc) ->
     Res = load_input_file(InputFile, Opts, InputDir),
     load_input_files(InputFiles, InputDir, [Res | Acc]);
-load_input_files(InputFileDefines, InputDir, Acc) when is_map(InputFileDefines) ->
-    load_input_files(maps:to_list(InputFileDefines), InputDir, Acc);
 load_input_files([], _InputDir, Acc) -> Acc.
 
 all_attr_modules_app(undefined, _Type) -> [];
@@ -123,8 +115,8 @@ all_attr_modules() ->
         all_attr_modules_ebin(loader) ++
         all_attr_modules(behavior, [?MODULE])).
 
--spec load_input_file(InputFile :: file:filename(), Opts :: any(), InputDir :: file:filename()) ->
-    {InputFile :: file:filename(), OutputData :: any()}.
+-spec load_input_file(tdata:input_file(), tdata:input_file_opts(), InputDir :: file:filename()) ->
+    {tdata:input_file(), OutputData :: any()}.
 load_input_file(InputFile0, Opts, InputDir) ->
     InputFile = filename:join(InputDir, InputFile0),
     Ext = filename:extension(InputFile),
