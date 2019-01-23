@@ -21,42 +21,84 @@ main([]) -> % load config from tdata.config when no args
     end,
     ok;
 main(Args) ->
-    OptSpecList = [
-        {input_dir, $i, "input_dir", {string, "data"}, "Input Dir eg: data or \"data/*\"."},
-        {output_dir, $o, "output_dir", {string, "output"}, "Output Dir eg: output."},
-        {template_dir, $t, "template_dir", {string, "templates"}, "Template Dir eg: template_dir."},
-        {recursive, $r, "recursive", {boolean, false}, "is recursive mode: true or false."},
-        {force, $f, "force", {boolean, false}, "force gen all output: true or false."},
-        {child_dir, $c, "child_dir", string,
-            "if recursive set to false, must set this arguments: '-c child_dir1 -c child_dir2 ...'"},
-        {help, $h, "help", undefined, "print help."},
-        {version, $v, "version", undefined, "print version."}
-    ],
+    io:setopts(standard_error, [{unicode, true}]),
+    UsageOptSpecList = opt_spec_list(usage),
+    OptSpecList = opt_spec_list(parse),
     case getopt:parse(OptSpecList, Args) of
         {ok, {_Options, ["help"]}} ->
-            getopt:usage(OptSpecList, ?PROGRAM_NAME);
+            getopt:usage(UsageOptSpecList, ?PROGRAM_NAME);
         {ok, {_Options, ["version"]}} ->
             print_version();
         {ok, {Options, _LastString}} ->
-            case proplists:is_defined(help, Options) of
-                true ->
-                    getopt:usage(OptSpecList, ?PROGRAM_NAME);
-                _ ->
-                    case proplists:is_defined(version, Options) of
-                        true ->
-                            print_version();
-                        _ ->
-                            do(Options)
-                    end
+            case do_other_cmd(UsageOptSpecList, Options) of
+                no_match ->
+                    Config = get_config(Options),
+                    cf:print("~!r~p : ~p~n", [Options, Config]),
+                    do(Config);
+                Res -> Res
             end;
         {error, {Reason, Data}} ->
             cf:print("~!r~p : ~p~n", [Reason, Data]),
-            getopt:usage(OptSpecList, ?PROGRAM_NAME)
+            getopt:usage(UsageOptSpecList, ?PROGRAM_NAME)
     end.
 
 %%====================================================================
 %% Internal functions
 %%====================================================================
+
+get_config(Options) ->
+    DefaultConfig = [
+        {input_dir, "data"}, {output_dir, "output"}, {template_dir, "templates"},
+        {recursive, false}, {force, false}, {config_file, "tdata.config"}
+    ],
+    ConfigFile = proplists:get_value(config_file, Options, "tdata.config"),
+    case filelib:is_regular(ConfigFile) of
+        true ->
+            {ok, Config0} = file:consult(ConfigFile),
+            merge_config([DefaultConfig, Config0, Options]);
+        false ->
+            merge_config([DefaultConfig, Options])
+    end.
+
+merge_config(ConfigList) ->
+    merge_config(ConfigList, #{}).
+merge_config([Config | List], Map) ->
+    NewMap = maps:merge(Map, maps:from_list(Config)),
+    merge_config(List, NewMap);
+merge_config([], Map) -> maps:to_list(Map).
+
+opt_spec_list(usage) ->
+    opt_spec_list({string, "data"}, {string, "output"}, {string, "templates"},
+        {boolean, false}, {boolean, false}, {string, "tdata.config"});
+opt_spec_list(_) ->
+    opt_spec_list(string, string, string, boolean, boolean, string).
+
+opt_spec_list(InputDir, OutputDir, TemplateDir, Recursive, Force, ConfigFile) ->
+    [
+        {input_dir, $i, "input_dir", InputDir, "Input Dir eg: data or \"data/*\"."},
+        {output_dir, $o, "output_dir", OutputDir, "Output Dir eg: output."},
+        {template_dir, $t, "template_dir", TemplateDir, "Template Dir eg: template_dir."},
+        {recursive, $r, "recursive", Recursive, "is recursive mode: true or false."},
+        {force, $f, "force", Force, "force gen all output: true or false."},
+        {child_dir, $c, "child_dir", string,
+            "if recursive set to false, must set this arguments: '-c child_dir1 -c child_dir2 ...'"},
+        {config_file, $F, "config_file", ConfigFile, "ConfigFile eg: tdata.config."},
+        {help, $h, "help", undefined, "print help."},
+        {version, $v, "version", undefined, "print version."}
+    ].
+
+do_other_cmd(OptSpecList, Options) ->
+    case proplists:is_defined(help, Options) of
+        true ->
+            getopt:usage(OptSpecList, ?PROGRAM_NAME);
+        _ ->
+            case proplists:is_defined(version, Options) of
+                true ->
+                    print_version();
+                _ ->
+                    no_match
+            end
+    end.
 
 do(Config0) ->
     {ok, Cwd} = file:get_cwd(),
@@ -172,6 +214,8 @@ handle_config([{child_dir, ChildDir} | Config], Cwd, Acc) ->
         false ->
             handle_config(Config, Cwd, [{child_dirs, [ChildDir]} | Acc])
     end;
+handle_config([config_file | Config], Cwd, Acc) -> % useless, just skip
+    handle_config(Config, Cwd, Acc);
 handle_config([Other | Config], Cwd, Acc) ->
     handle_config(Config, Cwd, [Other | Acc]);
 handle_config([], _Cwd, Acc0) -> % last

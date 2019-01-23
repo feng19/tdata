@@ -108,7 +108,8 @@ transform_file(TransformDefine, GlobalConfig, TransformConfig) ->
                 true ->
                     transform_file_1(InputFiles, TransformDefine, GlobalConfig, TransformConfig);
                 _ ->
-                    {"not all file", InputFiles}
+                    Format = string:join(lists:duplicate(length(InputFiles), "~ts"), " "),
+                    {lists:flatten(io_lib:format(Format, InputFiles)), not_all_file}
             end;
         Result -> Result
     end.
@@ -165,8 +166,13 @@ transform_file_render(Data, OutputDir, OutputFile0, LastMaxInputTime, TplType, T
     OutputFile = filename:join(OutputDir, OutputFile0),
     case is_need_transform(LastMaxInputTime, OutputFile, TplFile) of
         true ->
-            transform_file_render_do(Data,
-                TplType, TplFile, OutputFile0, OutputFile, HeaderComments);
+            case filelib:ensure_dir(OutputFile) of
+                ok ->
+                    transform_file_render_do(Data,
+                        TplType, TplFile, OutputFile0, OutputFile, HeaderComments);
+                {error, Reason} ->
+                    {OutputFile, Reason}
+            end;
         false ->
             {OutputFile0, skipped}
     end.
