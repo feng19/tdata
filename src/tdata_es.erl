@@ -21,7 +21,7 @@ main([]) -> % load config from tdata.config when no args
     end,
     ok;
 main(Args) ->
-    io:setopts(standard_error, [{unicode, true}]),
+    io:setopts([{encoding, unicode}]),
     UsageOptSpecList = opt_spec_list(usage),
     OptSpecList = opt_spec_list(parse),
     case getopt:parse(OptSpecList, Args) of
@@ -33,7 +33,6 @@ main(Args) ->
             case do_other_cmd(UsageOptSpecList, Options) of
                 no_match ->
                     Config = get_config(Options),
-                    cf:print("~!r~p : ~p~n", [Options, Config]),
                     do(Config);
                 Res -> Res
             end;
