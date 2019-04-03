@@ -75,16 +75,16 @@ opt_spec_list(_) ->
 
 opt_spec_list(InputDir, OutputDir, TemplateDir, Recursive, Force, ConfigFile) ->
     [
-        {input_dir, $i, "input_dir", InputDir, "Input Dir eg: data or \"data/*\"."},
+        {input_dir, $i, "input_dir", InputDir, "Input directory eg: data or \"data/*\"."},
         {output_dir, $o, "output_dir", OutputDir, "Output Dir eg: output."},
-        {template_dir, $t, "template_dir", TemplateDir, "Template Dir eg: template_dir."},
-        {recursive, $r, "recursive", Recursive, "is recursive mode: true or false."},
-        {force, $f, "force", Force, "force gen all output: true or false."},
-        {child_dir, $c, "child_dir", string,
-            "if recursive set to false, must set this arguments: '-c child_dir1 -c child_dir2 ...'"},
+        {template_dir, $t, "template_dir", TemplateDir, "Template directory eg: template_dir."},
+        {recursive, $r, "recursive", Recursive, "Recursive search ChildDir of InputDir: true or false."},
+        {force, $f, "force", Force, "Force gen all output: true or false."},
+        {child_dir, $c, "child_dir", string, "Specify ChildDir of InputDir: '-c child_dir1 -c child_dir2 ...'"},
         {config_file, $F, "config_file", ConfigFile, "ConfigFile eg: tdata.config."},
-        {help, $h, "help", undefined, "print help."},
-        {version, $v, "version", undefined, "print version."}
+        {app, $a, "app", string, "Which application want to start."},
+        {help, $h, "help", undefined, "Print help."},
+        {version, $v, "version", undefined, "Print version."}
     ].
 
 do_other_cmd(OptSpecList, Options) ->
@@ -102,37 +102,22 @@ do_other_cmd(OptSpecList, Options) ->
 
 do(Config0) ->
     {ok, Cwd} = file:get_cwd(),
-    add_paths(Cwd),
     Config = handle_config(Config0, Cwd, []),
+    cf:print("~!gConfig: ~p~n", [Config]),
     PythonDir = "python2",
     extract_python2(PythonDir),
     tdata_excel_loader:set_python_dir(PythonDir, PythonDir),
-    case maps:get(app, Config, undefined) of
-        undefined ->
-            case filelib:wildcard("src/*.app.src") of
-                [AppT] ->
-                    App = list_to_atom(filename:basename(AppT, ".app.src")),
-                    {ok, _} = application:ensure_all_started(App),
-                    application:set_env(tdata, app, App);
-                _ ->
-                    case filelib:is_dir(filename:join(Cwd, "ebin"))
-                        andalso filelib:wildcard("ebin/*.beam") =/= [] of
-                        true -> ok;
-                        false ->
-                            error(cannot_find_app)
-                    end
-            end;
-        App ->
-            {ok, _} = application:ensure_all_started(App),
-            application:set_env(tdata, app, App)
-    end,
-    DefineModules = all_define_modules(),
+    load_beam(Cwd, Config),
+    DefineModules =
+        case all_define_modules() of
+            [] ->
+                cf:print("~!rCan't find define modules~n"),
+                init:stop();
+            DefineModules0 -> DefineModules0
+        end,
     tdata:start(),
     case maps:get(recursive, Config, false) of
         false ->
-            IsForce = maps:get(force, Config, false),
-            OutputDir = maps:get(output_dir, Config),
-            cleanup_dir(OutputDir, IsForce),
             loop_transform(DefineModules, Config);
         InputDirs ->
             do_recursive_dir(DefineModules, InputDirs, Config)
@@ -143,8 +128,8 @@ extract_python2(PythonDir) ->
     ScriptName = filename:absname(escript:script_name()),
     case filelib:is_regular(ScriptName) of
         true ->
-            {ok, Escript} = escript:extract(ScriptName, []),
-            {archive, Archive} = lists:keyfind(archive, 1, Escript),
+            {ok, EScript} = escript:extract(ScriptName, []),
+            {archive, Archive} = lists:keyfind(archive, 1, EScript),
             zip:extract(Archive, [keep_old_files, {file_filter,
                 fun(#zip_file{name = FileName}) ->
                     hd(filename:split(FileName)) == PythonDir
@@ -155,7 +140,8 @@ extract_python2(PythonDir) ->
     case filelib:is_dir(PythonDir) of
         true -> ok;
         false ->
-            error({miss_python_dir, PythonDir})
+            cf:print("~!rMiss python dir: ~ts~n", [PythonDir]),
+            init:stop()
     end.
 
 all_define_modules() ->
@@ -165,15 +151,13 @@ all_define_modules() ->
         tdata_loader:all_attr_modules(behavior, [tdata])).
 
 do_recursive_dir(DefineModules, InputDirs, Config) ->
-    IsForce = maps:get(force, Config, false),
-    [transform(InputDir, DefineModules, Config, IsForce) || InputDir <- InputDirs].
+    [transform(InputDir, DefineModules, Config) || InputDir <- InputDirs].
 
-transform(InputDir, DefineModules, Config, IsForce) ->
+transform(InputDir, DefineModules, Config) ->
     case filelib:is_dir(InputDir) of
         true ->
             cf:print("~!g[input_dir:~ts] transforming...~n", [InputDir]),
             OutputDir = filename:join([maps:get(output_dir, Config), filename:basename(InputDir)]),
-            cleanup_dir(OutputDir, IsForce),
             ensure_dir(OutputDir),
             NewConfig = Config#{input_dir => InputDir, output_dir => OutputDir},
             loop_transform(DefineModules, NewConfig),
@@ -183,8 +167,17 @@ transform(InputDir, DefineModules, Config, IsForce) ->
     end.
 
 loop_transform([DefineModule | DefineModules], Config) ->
-    cf:print("~!g  [~p] transforming...~n", [DefineModule]),
-    ResList = tdata:transform_files(DefineModule, Config, Config),
+    cf:print("~!g  [module:~p] transforming...~n", [DefineModule]),
+    case catch tdata:transform_files(DefineModule, Config, Config) of
+        {'EXIT', Reason} ->
+            cf:print("~!rEXIT Reason:~n~p~n", [Reason]);
+        ResList ->
+            print_result(ResList),
+            loop_transform(DefineModules, Config)
+    end;
+loop_transform([], _Config) -> ok.
+
+print_result(ResList) ->
     [begin
          case Res of
              ok ->
@@ -194,9 +187,7 @@ loop_transform([DefineModule | DefineModules], Config) ->
              _ ->
                  cf:print("~!r  ==> ~ts : ~p~n", [OutputFile, Res])
          end
-     end || {OutputFile, Res} <- ResList],
-    loop_transform(DefineModules, Config);
-loop_transform([], _Config) -> ok.
+     end || {OutputFile, Res} <- ResList].
 
 handle_config([{input_dir, InputDir} | Config], Cwd, Acc) ->
     handle_config(Config, Cwd, [{input_dir, filename:join(Cwd, InputDir)} | Acc]);
@@ -244,21 +235,41 @@ recursive_input_dir(Config) ->
         end,
     filelib:wildcard(InputDir).
 
-cleanup_dir(OutputDir, true) ->
-    os:cmd("rm -r " ++ OutputDir);
-cleanup_dir(_OutputDir, _IsForce) -> ok.
-
 ensure_dir(Dir) ->
     ok = filelib:ensure_dir(filename:join(Dir, "temp")).
-
-add_paths(Cwd) ->
-    code:add_paths([Dir || Dir <- [
-        filename:join(Cwd, "ebin") |
-        filelib:wildcard("_build/default/lib/*/ebin")], filelib:is_dir(Dir)
-    ]),
-    ok.
 
 print_version() ->
     application:load(tdata),
     {ok, V} = application:get_key(tdata, vsn),
     cf:print("version:~ts~n", [V]).
+
+load_beam(Cwd, Config) ->
+    add_paths(Cwd),
+    start_app(Config),
+    ok.
+
+add_paths(Cwd) ->
+    EbinDirs = tdata_loader:get_ebin_dirs(Cwd),
+    code:add_paths(EbinDirs),
+    ok.
+
+start_app(Config) ->
+    case maps:get(app, Config, undefined) of
+        undefined ->
+            case filelib:wildcard("src/*.app.src") of
+                [AppT] ->
+                    App = list_to_atom(filename:basename(AppT, ".app.src")),
+                    catch application:ensure_all_started(App),
+                    application:set_env(tdata, app, App);
+                _ ->
+                    skip
+            end;
+        App when is_atom(App) ->
+            catch application:ensure_all_started(App),
+            application:set_env(tdata, app, App);
+        AppStr when is_list(AppStr) ->
+            App = list_to_atom(AppStr),
+            catch application:ensure_all_started(App),
+            application:set_env(tdata, app, App)
+    end,
+    ok.

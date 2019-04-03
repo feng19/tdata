@@ -166,7 +166,6 @@ skip_comments(LoadSheetOpts, Data) -> % false
 zip_header(#{rows := [Header0 | Rows0]} = Data, LoadSheetOpts) ->
     case check_header(Header0) of
         {ok, Header} ->
-
             {NewData, NewLoadSheetOpts} =
                 case maps:get(type_comment, LoadSheetOpts, false) of
                     true ->

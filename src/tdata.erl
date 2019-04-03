@@ -121,6 +121,7 @@ transform_file(TransformDefine, GlobalConfig, TransformConfig) ->
 transform_file_1(InputFiles, #{input_file_defines := InputFileDefines, output_file := OutputFile0,
     transform_fun := TransformFun} = TransformDefine,
     #{input_dir := InputDir, output_dir := OutputDir} = GlobalConfig, TransformConfig) ->
+    IsForce = maps:get(force, GlobalConfig, false),
     case OutputFile0 of
         dynamic -> % always call transform_file to get OutputList
             {InputDataList, OutputList} = transform_file_do(InputFileDefines, OutputFile0,
@@ -130,16 +131,17 @@ transform_file_1(InputFiles, #{input_file_defines := InputFileDefines, output_fi
             {TplType, TplFile} = get_tpl_info(TransformDefine, GlobalConfig),
             case OutputList of
                 _ when is_list(OutputList) ->
-                    [transform_file_render_list(Output, OutputDir, LastMaxInputTime, TplType, TplFile, HeaderComments)
-                        || Output <- OutputList];
+                    [transform_file_render_list(Output, OutputDir, LastMaxInputTime,
+                        TplType, TplFile, HeaderComments, IsForce) || Output <- OutputList];
                 Output ->
-                    transform_file_render_list(Output, OutputDir, LastMaxInputTime, TplType, TplFile, HeaderComments)
+                    transform_file_render_list(Output, OutputDir, LastMaxInputTime,
+                        TplType, TplFile, HeaderComments, IsForce)
             end;
         _ ->
             OutputFile = filename:join(OutputDir, OutputFile0),
             ok = filelib:ensure_dir(OutputFile),
             {TplType, TplFile} = get_tpl_info(TransformDefine, GlobalConfig),
-            case is_need_transform(InputFiles, OutputFile, TplFile) of
+            case IsForce orelse is_need_transform(InputFiles, OutputFile, TplFile) of
                 true ->
                     {InputDataList, Data} = transform_file_do(InputFileDefines, OutputFile0,
                         TransformFun, InputDir, TransformConfig),
@@ -150,21 +152,21 @@ transform_file_1(InputFiles, #{input_file_defines := InputFileDefines, output_fi
             end
     end.
 
-transform_file_render_list(Output, OutputDir, LastMaxInputTime, TplType, TplFile, HeaderComments) ->
+transform_file_render_list(Output, OutputDir, LastMaxInputTime, TplType, TplFile, HeaderComments, IsForce) ->
     case Output of
         {ok, OutputFile1, RenderData} ->
             transform_file_render({ok, RenderData},
-                OutputDir, OutputFile1, LastMaxInputTime, TplType, TplFile, HeaderComments);
+                OutputDir, OutputFile1, LastMaxInputTime, TplType, TplFile, HeaderComments, IsForce);
         {ok, OutputFile1, RenderData, RenderOptions} ->
             transform_file_render({ok, RenderData, RenderOptions},
-                OutputDir, OutputFile1, LastMaxInputTime, TplType, TplFile, HeaderComments);
+                OutputDir, OutputFile1, LastMaxInputTime, TplType, TplFile, HeaderComments, IsForce);
         Error ->
             {"dynamic", Error}
     end.
 
-transform_file_render(Data, OutputDir, OutputFile0, LastMaxInputTime, TplType, TplFile, HeaderComments) ->
+transform_file_render(Data, OutputDir, OutputFile0, LastMaxInputTime, TplType, TplFile, HeaderComments, IsForce) ->
     OutputFile = filename:join(OutputDir, OutputFile0),
-    case is_need_transform(LastMaxInputTime, OutputFile, TplFile) of
+    case IsForce orelse is_need_transform(LastMaxInputTime, OutputFile, TplFile) of
         true ->
             case filelib:ensure_dir(OutputFile) of
                 ok ->

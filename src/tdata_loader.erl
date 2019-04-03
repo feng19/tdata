@@ -10,7 +10,8 @@
     load_input_files/2, load_input_files/3,
     all_attr_modules_app/2,
     all_attr_modules/2,
-    all_attr_modules_ebin/1
+    all_attr_modules_ebin/1,
+    get_ebin_dirs/1
 ]).
 
 -callback start() -> ok.
@@ -93,17 +94,17 @@ all_attr_modules(Attr, Value) ->
 
 all_attr_modules_ebin(Type) ->
     {ok, Cwd} = file:get_cwd(),
-    EbinDir = filename:join(Cwd, "ebin"),
-    case filelib:is_dir(EbinDir) of
-        true ->
-            Targets = [list_to_atom(filename:basename(File, ".beam")) ||
-                File <- filelib:wildcard(filename:join(EbinDir, "*.beam"))],
-            lists:filter(
-                fun(Module) ->
-                    lists:member({tdata, [Type]}, Module:module_info(attributes))
-                end, Targets);
-        false -> []
-    end.
+    EbinDirs = get_ebin_dirs(Cwd),
+    Targets = [list_to_atom(filename:basename(File, ".beam")) ||
+        EbinDir <- EbinDirs, File <- filelib:wildcard(filename:join(EbinDir, "*.beam"))],
+    lists:filter(
+        fun(Module) ->
+            lists:member({tdata, [Type]}, Module:module_info(attributes))
+        end, Targets).
+
+get_ebin_dirs(Cwd) ->
+    EbinDirs = [filename:join(Cwd, "ebin") | filelib:wildcard("_build/default/lib/*/ebin")],
+    [Dir || Dir <- EbinDirs, filelib:is_dir(Dir)].
 
 %%====================================================================
 %% Internal functions
