@@ -14,6 +14,7 @@
 main([]) -> % load config from tdata.config when no args
     case filelib:is_regular("tdata.config") of
         true ->
+            io:setopts([{encoding, unicode}]),
             {ok, Config0} = file:consult("tdata.config"),
             do(Config0);
         false ->
@@ -244,7 +245,7 @@ recursive_input_dir(Config) ->
     filelib:wildcard(InputDir).
 
 cleanup_dir(OutputDir, true) ->
-    os:cmd("rm -rf " ++ OutputDir);
+    os:cmd("rm -r " ++ OutputDir);
 cleanup_dir(_OutputDir, _IsForce) -> ok.
 
 ensure_dir(Dir) ->

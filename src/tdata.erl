@@ -109,7 +109,7 @@ transform_file(TransformDefine, GlobalConfig, TransformConfig) ->
                     transform_file_1(InputFiles, TransformDefine, GlobalConfig, TransformConfig);
                 _ ->
                     Format = string:join(lists:duplicate(length(InputFiles), "~ts"), " "),
-                    {lists:flatten(io_lib:format(Format, InputFiles)), not_all_file}
+                    {lists:flatten(io_lib:format(Format, InputFiles)), input_file_miss}
             end;
         Result -> Result
     end.
@@ -122,7 +122,7 @@ transform_file_1(InputFiles, #{input_file_defines := InputFileDefines, output_fi
     transform_fun := TransformFun} = TransformDefine,
     #{input_dir := InputDir, output_dir := OutputDir} = GlobalConfig, TransformConfig) ->
     case OutputFile0 of
-        dynamic ->
+        dynamic -> % always call transform_file to get OutputList
             {InputDataList, OutputList} = transform_file_do(InputFileDefines, OutputFile0,
                 TransformFun, InputDir, TransformConfig),
             HeaderComments = mk_header_comments(InputDataList),
@@ -158,8 +158,8 @@ transform_file_render_list(Output, OutputDir, LastMaxInputTime, TplType, TplFile
         {ok, OutputFile1, RenderData, RenderOptions} ->
             transform_file_render({ok, RenderData, RenderOptions},
                 OutputDir, OutputFile1, LastMaxInputTime, TplType, TplFile, HeaderComments);
-        Err ->
-            {"dynamic", Err}
+        Error ->
+            {"dynamic", Error}
     end.
 
 transform_file_render(Data, OutputDir, OutputFile0, LastMaxInputTime, TplType, TplFile, HeaderComments) ->
@@ -180,7 +180,7 @@ transform_file_render(Data, OutputDir, OutputFile0, LastMaxInputTime, TplType, T
 transform_file_render_do(Data, TplType, TplFile, OutputFile0, OutputFile, HeaderComments) ->
     case tdata_render:render(Data, TplType, TplFile, OutputFile, HeaderComments) of
         ok -> {OutputFile0, ok};
-        Err -> {OutputFile0, Err}
+        Error -> {OutputFile0, Error}
     end.
 
 mk_header_comments(InputDataList) ->

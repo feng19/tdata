@@ -22,9 +22,12 @@
     function().
 -type check_field() :: {field_name(), [field_check_opt()]}.
 -type sheet_name() :: binary() | all.
+-type same_level_group() :: [field_name()].
 -type load_sheet_opts() :: #{
-    skip_comments := boolean() | pos_integer(), %% default false
-    groups := [field_name()],
+    skip_comments := boolean() | pos_integer(), % default false
+    type_comment := boolean(), % default false
+    only_rows => boolean(), % default false
+    groups := [field_name() | same_level_group()],
     checks := [check_field()]
 }.
 -type load_sheets_opts() :: #{sheet_name() => load_sheet_opts()}.
@@ -125,7 +128,7 @@ loop_all_sheet_name_do([{SheetName, LoadSheetOpts} | LoadSheetsOpts], Sheets, Da
                     _ -> SheetData0
                 end,
             loop_all_sheet_name_do(LoadSheetsOpts, Sheets, Data#{SheetName => SheetData});
-        Err -> Err
+        Error -> Error
     end;
 loop_all_sheet_name_do([{SheetName, _LoadSheetOpts} | _], _Sheets, _Data) when not is_binary(SheetName) ->
     {error_sheet_name, SheetName};
@@ -139,14 +142,14 @@ sheet_name(SheetName, Sheets, LoadSheetOpts) ->
             Data = #{sheet_name => SheetName, rows => Rows},
             case skip_comments(LoadSheetOpts, Data) of
                 {ok, _} = Res -> Res;
-                Err ->
-                    {do_sheet_config_err, SheetName, Err}
+                Error ->
+                    {do_sheet_config_err, SheetName, Error}
             end;
         error ->
             {unfound_sheet, SheetName}
     end.
 
-skip_comments(#{skip_comments := true} = LoadSheetOpts, Data) -> %% N=1
+skip_comments(#{skip_comments := true} = LoadSheetOpts, Data) -> % N = 1
     #{rows := [Comments0 | Rows]} = Data,
     Comments = lists:map(fun get_cell_value/1, Comments0),
     NewData = Data#{comments => Comments, rows => Rows},
@@ -157,16 +160,45 @@ skip_comments(#{skip_comments := N} = LoadSheetOpts, Data) when is_integer(N) ->
     Comments = [lists:map(fun get_cell_value/1, Comments0) || Comments0 <- CommentsRows],
     NewData = Data#{comments => Comments, rows => Rows},
     zip_header(NewData, LoadSheetOpts);
-skip_comments(LoadSheetOpts, Data) -> %% false
+skip_comments(LoadSheetOpts, Data) -> % false
     zip_header(Data, LoadSheetOpts).
 
 zip_header(#{rows := [Header0 | Rows0]} = Data, LoadSheetOpts) ->
     case check_header(Header0) of
         {ok, Header} ->
-            Rows = [maps:from_list(lists:zip(Header, Row)) || Row <- Rows0],
-            check_data_and_groups(Data#{header => Header, rows => Rows}, LoadSheetOpts);
-        Err -> Err
+
+            {NewData, NewLoadSheetOpts} =
+                case maps:get(type_comment, LoadSheetOpts, false) of
+                    true ->
+                        [TypeCommentsRows | Rows1] = Rows0,
+                        Rows = [maps:from_list(lists:zip(Header, Row)) || Row <- Rows1],
+                        TypeComments = lists:zip(Header, TypeCommentsRows),
+                        Checks0 = maps:get(checks, LoadSheetOpts, []),
+                        Checks = type_comment(TypeComments, Checks0),
+                        {Data#{header => Header, rows => Rows}, LoadSheetOpts#{checks => Checks}};
+                    false ->
+                        Rows1 = [maps:from_list(lists:zip(Header, Row)) || Row <- Rows0],
+                        {Data#{header => Header, rows => Rows1}, LoadSheetOpts}
+                end,
+            check_data_and_groups(NewData, NewLoadSheetOpts);
+        Error -> Error
     end.
+
+type_comment([{Header, TypeCommentCell} | TypeComments], Checks0) ->
+    TypeComment = get_cell_value(TypeCommentCell),
+    case tdata_excel_type:get_type_checks(TypeComment) of
+        FieldChecks when is_list(FieldChecks) ->
+            Checks =
+                case lists:keytake(Header, 1, Checks0) of
+                    {value, {_, OldFieldChecks}, Checks1} ->
+                        [{Header, FieldChecks ++ OldFieldChecks} | Checks1];
+                    false ->
+                        [{Header, FieldChecks} | Checks0]
+                end,
+            type_comment(TypeComments, Checks);
+        Error -> Error
+    end;
+type_comment([], Checks) -> Checks.
 
 check_data_and_groups(Data, LoadSheetOpts) ->
     Checks = maps:get(checks, LoadSheetOpts, []),
@@ -186,7 +218,7 @@ check_data_and_groups(Data, LoadSheetOpts) ->
                     case check_data(Data, Groups, NewChecks) of
                         {ok, NewData} ->
                             groups(Groups0, NewData, GroupChecks);
-                        Err -> Err
+                        Error -> Error
                     end;
                 MissGroups ->
                     {undefined_groups, MissGroups}
@@ -200,14 +232,14 @@ check_data(#{header := Header, rows := Rows} = Data, FilterFields, Checks) ->
     case check_cols_map(NewHeader, Checks, Rows) of
         {ok, NewRows} ->
             {ok, Data#{rows => NewRows}};
-        Err -> Err
+        Error -> Error
     end.
 
 check_cols_map([Field | Header], Checks, Rows) ->
     case check_rows_map(Field, Rows, Checks, []) of
         {ok, NewRows} ->
             check_cols_map(Header, Checks, NewRows);
-        Err -> Err
+        Error -> Error
     end;
 check_cols_map([], _Checks, NewRows) ->
     {ok, NewRows}.
@@ -219,7 +251,7 @@ check_rows_map(Field, [Row | Rows], Checks, Acc) ->
         {ok, CellValue} ->
             NewRow = Row#{Field => CellValue},
             check_rows_map(Field, Rows, Checks, [NewRow | Acc]);
-        Err -> Err
+        Error -> Error
     end;
 check_rows_map(_Field, [], _Checks, Acc) ->
     {ok, lists:reverse(Acc)}.
@@ -228,19 +260,15 @@ groups(Groups, #{rows := Rows} = Data, Checks) ->
     case groups_map(Groups, Rows, Checks) of
         {ok, NewRows} ->
             {ok, Data#{rows := NewRows}};
-        Err -> Err
+        Error -> Error
     end.
 
-groups_map([[GroupKey | SameGroups] | Groups], Rows, Checks) when is_atom(GroupKey) ->
-    case groups_map_first_row(GroupKey, SameGroups, Rows, Checks) of
+groups_map([[GroupKey | SameLevelGroups] | Groups], Rows, Checks) when is_atom(GroupKey) ->
+    case groups_map_first_row(GroupKey, SameLevelGroups, Rows, Checks) of
         {ok, GroupAcc} ->
             GroupList = maps:to_list(GroupAcc),
-            case groups_map_do(GroupList, Groups, Checks, #{}) of
-                {ok, Data} ->
-                    {ok, #{GroupKey => Data}};
-                Err -> Err
-            end;
-        Err -> Err
+            groups_map_do(GroupList, Groups, Checks, #{});
+        Error -> Error
     end;
 groups_map([GroupKey | Groups], Rows, Checks) when is_atom(GroupKey) ->
     groups_map([[GroupKey] | Groups], Rows, Checks);
@@ -251,22 +279,22 @@ groups_map_do([{Key, Rows0} | GroupList], Groups, Checks, Acc) ->
     case groups_map(Groups, Rows, Checks) of
         {ok, Data} ->
             groups_map_do(GroupList, Groups, Checks, Acc#{Key => Data});
-        Err -> Err
+        Error -> Error
     end;
 groups_map_do([], _Groups, _Checks, Acc) -> {ok, Acc}.
 
-groups_map_first_row(GroupKey, SameGroups, [Row | Rows], Checks) ->
+groups_map_first_row(GroupKey, SameLevelGroups, [Row | Rows], Checks) ->
     Cell = maps:get(GroupKey, Row),
     case is_cell_empty(Cell) of
         false ->
             FieldCheckList = get_field_checks(GroupKey, Checks),
-            SameGroupChecks = get_fields_checks(SameGroups, Checks),
-            groups_map_same_groups(GroupKey, Cell, Row, Rows, FieldCheckList, SameGroupChecks, #{});
+            SameGroupChecks = get_fields_checks(SameLevelGroups, Checks),
+            groups_map_same_level_groups(GroupKey, Cell, Row, Rows, FieldCheckList, SameGroupChecks, #{});
         true ->
             {first_row_is_empty, GroupKey}
     end.
 
-groups_map_same_groups(GroupKey, Cell0, Row, Rows, FieldCheckList, SameGroupChecks, Acc) ->
+groups_map_same_level_groups(GroupKey, Cell0, Row, Rows, FieldCheckList, SameGroupChecks, Acc) ->
     case get_cell_value(Cell0, FieldCheckList) of
         {ok, CellValue} ->
             case get_cells_map(SameGroupChecks, Row, #{GroupKey => CellValue}) of
@@ -274,16 +302,16 @@ groups_map_same_groups(GroupKey, Cell0, Row, Rows, FieldCheckList, SameGroupChec
                     NewRow = maps:merge(Row, DefaultRow),
                     groups_map_rows(GroupKey, Rows, CellValue, DefaultRow, FieldCheckList, SameGroupChecks,
                         Acc#{CellValue => [NewRow]});
-                Err -> Err
+                Error -> Error
             end;
-        Err -> Err
+        Error -> Error
     end.
 
 groups_map_rows(GroupKey, [Row | Rows], LastCell, DefaultRow, FieldCheckList, SameGroupChecks, Acc) ->
     Cell = maps:get(GroupKey, Row),
     case is_cell_empty(Cell) of
         false ->
-            groups_map_same_groups(GroupKey, Cell, Row, Rows, FieldCheckList, SameGroupChecks, Acc);
+            groups_map_same_level_groups(GroupKey, Cell, Row, Rows, FieldCheckList, SameGroupChecks, Acc);
         true ->
             NewRow = maps:merge(Row, DefaultRow),
             NewAcc = Acc#{LastCell => [NewRow | maps:get(LastCell, Acc)]},
@@ -328,7 +356,7 @@ get_cells_map([{Field, FieldCheckList} | CheckFields], Row, Acc) ->
     case get_cell_value(maps:get(Field, Row), FieldCheckList) of
         {ok, Cell} ->
             get_cells_map(CheckFields, Row, Acc#{Field => Cell});
-        Err -> Err
+        Error -> Error
     end;
 get_cells_map([], _Row, Acc) -> {ok, Acc}.
 
@@ -338,43 +366,43 @@ get_cell_value({Row, Col, Type, Cell}, CheckList) ->
         is_function(Check, 2) orelse is_atom(Check)],
     case check_fun_cell(NewCheckList, Type, Cell) of
         {ok, _} = Res -> Res;
-        Err ->
+        Error ->
             {check_field_fail, [
-                {row, Row}, {col, Col}, {type, Type}, {cell, Cell}, {err, Err}
+                {row, Row}, {col, Col}, {type, Type}, {cell, Cell}, {error, Error}
             ]}
     end.
 
-check_fun_cell([Check | CheckList], Type, Cell) when is_function(Check, 1) ->
-    case Check(Cell) of
+check_fun_cell([CheckFun | CheckList], Type, Cell) when is_function(CheckFun, 1) ->
+    case CheckFun(Cell) of
         {ok, NewCell} ->
             check_fun_cell(CheckList, Type, NewCell);
-        Err -> Err
+        Error -> Error
     end;
-check_fun_cell([Check | CheckList], Type, Cell) when is_function(Check, 2) ->
-    case Check(Type, Cell) of
+check_fun_cell([CheckFun | CheckList], Type, Cell) when is_function(CheckFun, 2) ->
+    case CheckFun(Type, Cell) of
         {ok, NewCell} ->
             check_fun_cell(CheckList, Type, NewCell);
-        Err -> Err
+        Error -> Error
     end;
-check_fun_cell([Check | CheckList], Type, Cell) when is_atom(Check) ->
-    code:ensure_loaded(tdata_util),
-    case erlang:function_exported(tdata_util, Check, 1) of
+check_fun_cell([CheckName | CheckList], Type, Cell) when is_atom(CheckName) ->
+    code:ensure_loaded(tdata_excel_util),
+    case erlang:function_exported(tdata_excel_util, CheckName, 1) of
         true ->
-            case tdata_util:Check(Cell) of
+            case tdata_excel_util:CheckName(Cell) of
                 {ok, NewCell} ->
                     check_fun_cell(CheckList, Type, NewCell);
-                Err -> Err
+                Error -> Error
             end;
         false ->
-            case erlang:function_exported(tdata_util, Check, 2) of
+            case erlang:function_exported(tdata_excel_util, CheckName, 2) of
                 true ->
-                    case tdata_util:Check(Type, Cell) of
+                    case tdata_excel_util:CheckName(Type, Cell) of
                         {ok, NewCell} ->
                             check_fun_cell(CheckList, Type, NewCell);
-                        Err -> Err
+                        Error -> Error
                     end;
                 false ->
-                    {undefined_check_fun, Check}
+                    {undefined_check_fun, CheckName}
             end
     end;
 check_fun_cell([], _Type, Cell) -> {ok, Cell}.

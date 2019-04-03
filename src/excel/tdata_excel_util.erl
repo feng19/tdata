@@ -1,4 +1,4 @@
--module(tdata_util).
+-module(tdata_excel_util).
 
 -export([
     check_integer/1,
