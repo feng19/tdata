@@ -322,8 +322,9 @@ groups_map_rows(_GroupKey, [], _LastCell, _DefaultRow, _FieldCheckList, _SameGro
 check_header([]) -> empty_header;
 check_header(Header) -> get_header(Header, []).
 
-get_header([{Row, Col, Type, Cell} | Header], NewHeader) ->
-    case catch binary_to_atom(Cell, utf8) of
+get_header([{Row, Col, Type, Cell0} | Header], NewHeader) ->
+    Cell = string:strip(binary_to_list(Cell0)),
+    case catch list_to_atom(Cell) of
         {'EXIT', Reason} ->
             {header_trans_to_atom, [
                 {row, Row}, {col, Col}, {type, Type}, {cell, Cell}, {err, Reason}
