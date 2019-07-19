@@ -30,7 +30,7 @@
     output_file := output_file() | dynamic,
     transform_fun := function(),
     tpl_type => tdata_render:tpl_type(),
-    tpl_file => file:filename()
+    tpl_file => file:filename() | dynamic
 }.
 
 -type transform_defines() :: [transform_define()].
@@ -122,13 +122,13 @@ transform_file_1(InputFiles, #{input_file_defines := InputFileDefines, output_fi
     transform_fun := TransformFun} = TransformDefine,
     #{input_dir := InputDir, output_dir := OutputDir} = GlobalConfig, TransformConfig) ->
     IsForce = maps:get(force, GlobalConfig, false),
+    {TplType, TplFile} = get_tpl_info(TransformDefine, GlobalConfig),
     case OutputFile0 of
         dynamic -> % always call transform_file to get OutputList
             {InputDataList, OutputList} = transform_file_do(InputFileDefines, OutputFile0,
                 TransformFun, InputDir, TransformConfig),
             HeaderComments = mk_header_comments(InputDataList),
             LastMaxInputTime = max_last_modified(InputFiles),
-            {TplType, TplFile} = get_tpl_info(TransformDefine, GlobalConfig),
             case OutputList of
                 _ when is_list(OutputList) ->
                     [transform_file_render_list(Output, OutputDir, LastMaxInputTime,
@@ -140,7 +140,6 @@ transform_file_1(InputFiles, #{input_file_defines := InputFileDefines, output_fi
         _ ->
             OutputFile = filename:join(OutputDir, OutputFile0),
             ok = filelib:ensure_dir(OutputFile),
-            {TplType, TplFile} = get_tpl_info(TransformDefine, GlobalConfig),
             case IsForce orelse is_need_transform(InputFiles, OutputFile, TplFile) of
                 true ->
                     {InputDataList, Data} = transform_file_do(InputFileDefines, OutputFile0,
@@ -160,6 +159,14 @@ transform_file_render_list(Output, OutputDir, LastMaxInputTime, TplType, TplFile
         {ok, OutputFile1, RenderData, RenderOptions} ->
             transform_file_render({ok, RenderData, RenderOptions},
                 OutputDir, OutputFile1, LastMaxInputTime, TplType, TplFile, HeaderComments, IsForce);
+        {ok, OutputFile1, RenderData, RenderOptions, NewTplFile} ->
+            TplDir = TplFile,
+            transform_file_render({ok, RenderData, RenderOptions},
+                OutputDir, OutputFile1, LastMaxInputTime, TplType, filename:join(TplDir, NewTplFile), HeaderComments, IsForce);
+        {ok, OutputFile1, RenderData, RenderOptions, NewTplType, NewTplFile} ->
+            TplDir = TplFile,
+            transform_file_render({ok, RenderData, RenderOptions},
+                OutputDir, OutputFile1, LastMaxInputTime, NewTplType, filename:join(TplDir, NewTplFile), HeaderComments, IsForce);
         Error ->
             {"dynamic", Error}
     end.
@@ -233,10 +240,14 @@ get_tpl_info(TransformDefine, GlobalConfig) ->
     case maps:get(tpl_file, TransformDefine, miss) of
         miss ->
             {undefined, undefined};
-        TplFile0 ->
-            TplType0 = get_tpl_type(TplFile0, TransformDefine),
+        dynamic ->
+            TplType = maps:get(tpl_type, TransformDefine, auto),
             TplDir = get_tpl_dir(TransformDefine, GlobalConfig),
-            {TplType0, filename:join(TplDir, TplFile0)}
+            {TplType, TplDir};
+        TplFile0 ->
+            TplType = get_tpl_type(TplFile0, TransformDefine),
+            TplDir = get_tpl_dir(TransformDefine, GlobalConfig),
+            {TplType, filename:join(TplDir, TplFile0)}
     end.
 
 get_tpl_type(TplFile, TransformDefine) ->
