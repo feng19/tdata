@@ -61,6 +61,7 @@ start() ->
 
 start(_, _) ->
     tdata_loader:start(),
+    tdata_render:start(),
     Pid = spawn_link(fun() -> receive shutdown -> ok end end),
     {ok, Pid}.
 

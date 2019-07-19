@@ -2,6 +2,7 @@
 
 %% API
 -export([
+    start/0,
     render/5
 ]).
 
@@ -11,6 +12,10 @@
 %%====================================================================
 %% API functions
 %%====================================================================
+
+start() ->
+    ets:new(?MODULE, [named_table, public, set, {read_concurrency, true}]),
+    ok.
 
 -spec render({ok, any()} | tuple() | atom(), tpl_type(), TplFile :: file:filename(),
     OutputFile :: file:filename(), HeaderComments :: binary()) -> ok | tuple().
@@ -34,11 +39,24 @@ render(Err, _TplType, _TplFile, _OutputFile, _HeaderComments) -> Err.
 %%====================================================================
 
 render_mustache(TplFile, TargetFile, HeaderComments, RenderData, RenderOptions) ->
-    case file:read_file(TplFile) of
+    case get_file(TplFile) of
         {ok, RenderBin} ->
             IoList = bbmustache:render(RenderBin, RenderData, RenderOptions),
             write_file(TargetFile, [HeaderComments | IoList]);
         Err -> Err
+    end.
+
+get_file(TplFile) ->
+    case ets:lookup(?MODULE, TplFile) of
+        [{_, RenderBin}] ->
+            {ok, RenderBin};
+        _ ->
+            case file:read_file(TplFile) of
+                {ok, RenderBin} ->
+                    ets:insert(?MODULE, {TplFile, RenderBin}),
+                    {ok, RenderBin};
+                Err -> Err
+            end
     end.
 
 render_erl(TargetFile, HeaderComments, ExportList, BodyIoList) ->
