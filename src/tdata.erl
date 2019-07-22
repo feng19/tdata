@@ -30,7 +30,8 @@
     output_file := output_file() | dynamic,
     transform_fun := function(),
     tpl_type => tdata_render:tpl_type(),
-    tpl_file => file:filename() | dynamic
+    tpl_file => file:filename() | dynamic,
+    header_comments => boolean() | iolist()
 }.
 
 -type transform_defines() :: [transform_define()].
@@ -128,7 +129,7 @@ transform_file_1(InputFiles, #{input_file_defines := InputFileDefines, output_fi
         dynamic -> % always call transform_file to get OutputList
             {InputDataList, OutputList} = transform_file_do(InputFileDefines, OutputFile0,
                 TransformFun, InputDir, TransformConfig),
-            HeaderComments = mk_header_comments(InputDataList),
+            HeaderComments = mk_header_comments(TransformDefine, InputDataList),
             LastMaxInputTime = max_last_modified(InputFiles),
             case OutputList of
                 _ when is_list(OutputList) ->
@@ -145,7 +146,7 @@ transform_file_1(InputFiles, #{input_file_defines := InputFileDefines, output_fi
                 true ->
                     {InputDataList, Data} = transform_file_do(InputFileDefines, OutputFile0,
                         TransformFun, InputDir, TransformConfig),
-                    HeaderComments = mk_header_comments(InputDataList),
+                    HeaderComments = mk_header_comments(TransformDefine, InputDataList),
                     transform_file_render_do(Data, TplType, TplFile, OutputFile0, OutputFile, HeaderComments);
                 false ->
                     {OutputFile0, skipped}
@@ -193,9 +194,16 @@ transform_file_render_do(Data, TplType, TplFile, OutputFile0, OutputFile, Header
         Error -> {OutputFile0, Error}
     end.
 
-mk_header_comments(InputDataList) ->
-    SourceFiles = unicode:characters_to_binary(string:join([InputFile || {InputFile, _} <- InputDataList], ",")),
-    <<"%% Automatically generated, do not edit\n%% Source Files: ", SourceFiles/binary, "\n">>.
+mk_header_comments(TransformDefine, InputDataList) ->
+    case maps:get(header_comments, TransformDefine, true) of
+        true ->
+            SourceFiles = unicode:characters_to_binary(string:join([InputFile || {InputFile, _} <- InputDataList], ",")),
+            <<"%% Automatically generated, do not edit\n%% Source Files: ", SourceFiles/binary, "\n">>;
+        false ->
+            <<>>;
+        Bin when is_binary(Bin) -> Bin;
+        List when is_list(List) -> iolist_to_binary(List)
+    end.
 
 transform_file_do(InputFileDefines, OutputFile0, TransformFun, InputDir, TransformConfig) ->
     InputDataList = tdata_loader:load_input_files(InputFileDefines, InputDir),

@@ -47,16 +47,22 @@ render_mustache(TplFile, TargetFile, HeaderComments, RenderData, RenderOptions) 
     end.
 
 get_file(TplFile) ->
-    case ets:lookup(?MODULE, TplFile) of
-        [{_, RenderBin}] ->
-            {ok, RenderBin};
-        _ ->
-            case file:read_file(TplFile) of
-                {ok, RenderBin} ->
-                    ets:insert(?MODULE, {TplFile, RenderBin}),
+    case get(TplFile) of
+        undefined ->
+            case ets:lookup(?MODULE, TplFile) of
+                [{_, RenderBin}] ->
+                    put(TplFile, RenderBin),
                     {ok, RenderBin};
-                Err -> Err
-            end
+                _ ->
+                    case file:read_file(TplFile) of
+                        {ok, RenderBin} ->
+                            put(TplFile, RenderBin),
+                            ets:insert(?MODULE, {TplFile, RenderBin}),
+                            {ok, RenderBin};
+                        Err -> Err
+                    end
+            end;
+        RenderBin -> {ok, RenderBin}
     end.
 
 render_erl(TargetFile, HeaderComments, ExportList, BodyIoList) ->

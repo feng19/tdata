@@ -3,12 +3,14 @@
  {<<"cf">>,{pkg,<<"cf">>,<<"0.3.1">>},0},
  {<<"erlport">>,{pkg,<<"erlport">>,<<"0.10.0">>},0},
  {<<"erlydtl">>,{pkg,<<"erlydtl">>,<<"0.12.1">>},0},
- {<<"getopt">>,{pkg,<<"getopt">>,<<"1.0.1">>},0}]}.
+ {<<"getopt">>,{pkg,<<"getopt">>,<<"1.0.1">>},0},
+ {<<"jsx">>,{pkg,<<"jsx">>,<<"2.10.0">>},0}]}.
 [
 {pkg_hash,[
  {<<"bbmustache">>, <<"9FB63FA60BD53AFBF47F02E6D8BD6B2BEAFC068E02E20975254DC7461FD4F397">>},
  {<<"cf">>, <<"5CB902239476E141EA70A740340233782D363A31EEA8AD37049561542E6CD641">>},
  {<<"erlport">>, <<"2436EC2F4ED62538C6E9C52F523F9315B6002EE7E298D9BD10B35ABC3F6B32E7">>},
  {<<"erlydtl">>, <<"3FDE3190D30340B10CFCFDB4135A828761D468DB4E4B34817C6B91D295F3142D">>},
- {<<"getopt">>, <<"C73A9FA687B217F2FF79F68A3B637711BB1936E712B521D8CE466B29CBF7808A">>}]}
+ {<<"getopt">>, <<"C73A9FA687B217F2FF79F68A3B637711BB1936E712B521D8CE466B29CBF7808A">>},
+ {<<"jsx">>, <<"77760560D6AC2B8C51FD4C980E9E19B784016AA70BE354CE746472C33BEB0B1C">>}]}
 ].
